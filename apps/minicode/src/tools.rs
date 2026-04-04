@@ -103,7 +103,7 @@ impl Tool for GrepFilesTool {
         "grep_files"
     }
     fn description(&self) -> &str {
-        "使用 ripgrep 搜索文本。"
+        "Search text using ripgrep, with results limited to first 100 matches for performance."
     }
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"}},"required":["pattern"]})
@@ -142,7 +142,18 @@ impl Tool for GrepFilesTool {
                 } else {
                     format!("{}\n{}", stdout, stderr)
                 };
-                ToolResult::ok(text)
+
+                // Check if output might be truncated and add indicator
+                let result_lines_count = text.lines().count();
+                let final_text = if result_lines_count >= 100 {
+                    format!(
+                        "{}\n\n[Results limited to first 100 matches. Refine your search pattern for more specific results.]",
+                        text
+                    )
+                } else {
+                    text
+                };
+                ToolResult::ok(final_text)
             }
             Err(err) => ToolResult::err(err.to_string()),
         }
@@ -157,7 +168,7 @@ impl Tool for ReadFileTool {
         "read_file"
     }
     fn description(&self) -> &str {
-        "读取 UTF-8 文本文件，可按 offset/limit 分块。"
+        "Read UTF-8 text file with optional offset/limit for chunked reading. Check TRUNCATED header."
     }
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"number"},"limit":{"type":"number"}},"required":["path"]})
@@ -249,7 +260,7 @@ impl Tool for EditFileTool {
         "edit_file"
     }
     fn description(&self) -> &str {
-        "通过精确 search/replace 修改文件。"
+        "Apply line-by-line edits to files using precise search/replace patterns."
     }
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"},"search":{"type":"string"},"replace":{"type":"string"},"replaceAll":{"type":"boolean"}},"required":["path","search","replace"]})

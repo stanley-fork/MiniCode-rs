@@ -13,67 +13,75 @@ pub fn build_system_prompt(
     mcp_servers: &[McpServerSummary],
 ) -> String {
     let mut lines = vec![
-        "你是 MiniCode 的编码代理，必须在当前仓库中完成用户请求。".to_string(),
-        "默认行为：先检查仓库并优先调用工具执行，再给结论；不要只停留在理论建议。".to_string(),
-        "如果用户明确要求你修改/生成/修复内容，直接动手执行，不要只给计划。".to_string(),
-        "优先使用读文件、搜索、编辑和验证命令来解决问题，而不是只给理论建议。".to_string(),
-        "调用工具时必须提供该工具 input_schema 中的必填字段；缺少必填字段时不要发起调用。"
-            .to_string(),
-        "当工具返回参数错误（例如 path is required）时，先修正参数再重试，不要重复同一个无效输入。"
-            .to_string(),
-        "读取文件时，read_file 必须提供 path；若路径不确定，先 list_files 或 grep_files 定位。"
-            .to_string(),
-        "确实需要补充信息时，调用 ask_user 提一个简短问题并等待用户回复。".to_string(),
-        "结构化响应协议：未完成且会继续调用工具时，用 <progress> 开头；仅在任务完成可交还控制时，用 <final> 开头。"
-            .to_string(),
-        "发出 <progress> 后不要停止，下一步应继续执行工具调用或代码修改。".to_string(),
-        format!("当前工作目录: {}", cwd.display()),
-        "权限摘要:".to_string(),
+        "You are mini-code, a terminal coding assistant.".to_string(),
+        "Default behavior: inspect the repository, use tools, make code changes when appropriate, and explain results clearly.".to_string(),
+        "Prefer reading files, searching code, editing files, and running verification commands over giving purely theoretical advice.".to_string(),
+        format!("Current cwd: {}", cwd.display()),
+        "You can inspect or modify paths outside the current cwd when the user asks, but tool permissions may pause for approval first.".to_string(),
+        "When making code changes, keep them minimal, practical, and working-oriented.".to_string(),
+        "If the user clearly asked you to build, modify, optimize, or generate something, do the work instead of stopping at a plan.".to_string(),
+        "If you need user clarification, call the ask_user tool with one concise question and wait for the user reply. Do not ask clarifying questions as plain assistant text.".to_string(),
+        "Do not choose subjective preferences such as colors, visual style, copy tone, or naming unless the user explicitly told you to decide yourself.".to_string(),
+        "When using read_file, pay attention to the header fields. If it says TRUNCATED: yes, continue reading with a larger offset before concluding that the file itself is cut off.".to_string(),
+        "If the user names a skill or clearly asks for a workflow that matches a listed skill, call load_skill before following it.".to_string(),
+        "Structured response protocol:".to_string(),
+        "- When you are still working and will continue with more tool calls, start your text with <progress>.".to_string(),
+        "- Only when the task is actually complete and you are ready to hand control back, start your text with <final>.".to_string(),
+        "- Use ask_user when clarification is required; that tool ends the turn and waits for user input.".to_string(),
+        "- Do not stop after a progress update. After a <progress> message, continue the task in the next step.".to_string(),
+        "- Plain assistant text without <progress> is treated as a completed assistant message for this turn.".to_string(),
     ];
-    for item in permission_summary {
-        lines.push(format!("- {item}"));
+
+    if !permission_summary.is_empty() {
+        lines.push(format!("Permission context:\n{}", permission_summary.join("\n")));
     }
 
-    lines.push("可用技能:".to_string());
     if skills.is_empty() {
-        lines.push("- (none)".to_string());
+        lines.push("Available skills:\n- none discovered".to_string());
     } else {
-        for skill in skills {
-            lines.push(format!("- {}: {}", skill.name, skill.description));
-        }
+        let skills_text = skills
+            .iter()
+            .map(|skill| format!("- {}: {}", skill.name, skill.description))
+            .collect::<Vec<_>>()
+            .join("\n");
+        lines.push(format!("Available skills:\n{}", skills_text));
     }
 
-    lines.push("MCP 服务:".to_string());
-    if mcp_servers.is_empty() {
-        lines.push("- (none)".to_string());
-    } else {
-        for s in mcp_servers {
-            let resources = s
-                .resource_count
-                .map(|x| format!(", resources={x}"))
-                .unwrap_or_default();
-            let prompts = s
-                .prompt_count
-                .map(|x| format!(", prompts={x}"))
-                .unwrap_or_default();
-            let protocol = s
-                .protocol
-                .as_ref()
-                .map(|x| format!(", protocol={x}"))
-                .unwrap_or_default();
-            let suffix = s
-                .error
-                .as_ref()
-                .map(|x| format!(" ({x})"))
-                .unwrap_or_default();
-            lines.push(format!(
-                "- {}: {}, tools={}{}{}{}{}",
-                s.name, s.status, s.tool_count, resources, prompts, protocol, suffix
-            ));
-        }
+    if !mcp_servers.is_empty() {
+        let servers_text = mcp_servers
+            .iter()
+            .map(|server| {
+                let suffix = server
+                    .error
+                    .as_ref()
+                    .map(|x| format!(" ({})", x))
+                    .unwrap_or_default();
+                let protocol = server
+                    .protocol
+                    .as_ref()
+                    .map(|x| format!(", protocol={}", x))
+                    .unwrap_or_default();
+                let resources = server
+                    .resource_count
+                    .map(|x| format!(", resources={}", x))
+                    .unwrap_or_default();
+                let prompts = server
+                    .prompt_count
+                    .map(|x| format!(", prompts={}", x))
+                    .unwrap_or_default();
+                format!(
+                    "- {}: {}, tools={}{}{}{}{}",
+                    server.name, server.status, server.tool_count, resources, prompts, protocol, suffix
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        lines.push(format!("Configured MCP servers:\n{}", servers_text));
 
         if mcp_servers.iter().any(|s| s.status == "connected") {
-            lines.push("已连接的 MCP 工具会以 mcp__server__tool 形式出现在工具列表中；若服务支持资源或提示词，请优先使用相关 MCP 工具。".to_string());
+            lines.push(
+                "Connected MCP tools are already exposed in the tool list with names prefixed like mcp__server__tool. Use list_mcp_resources/read_mcp_resource and list_mcp_prompts/get_mcp_prompt when a server exposes those capabilities.".to_string(),
+            );
         }
     }
 
@@ -81,8 +89,7 @@ pub fn build_system_prompt(
         let global_path = home.join(".claude").join("CLAUDE.md");
         if let Some(content) = maybe_read(&global_path) {
             lines.push(format!(
-                "全局指令（{}）:\n{}",
-                global_path.display(),
+                "Global instructions from ~/.claude/CLAUDE.md:\n{}",
                 content
             ));
         }
@@ -91,11 +98,11 @@ pub fn build_system_prompt(
     let project_path = cwd.join("CLAUDE.md");
     if let Some(content) = maybe_read(&project_path) {
         lines.push(format!(
-            "项目指令（{}）:\n{}",
+            "Project instructions from {}:\n{}",
             project_path.display(),
             content
         ));
     }
 
-    lines.join("\n")
+    lines.join("\n\n")
 }
