@@ -21,7 +21,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 use agent_loop::run_agent_turn;
 use anthropic_adapter::AnthropicModelAdapter;
@@ -61,6 +61,16 @@ fn render_banner(
 
 fn is_interactive_terminal() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+}
+
+fn should_force_tui(argv: &[String]) -> bool {
+    argv.iter().any(|x| x == "--tui")
+        || std::env::var("MINI_CODE_FORCE_TUI").ok().as_deref() == Some("1")
+}
+
+fn should_force_repl(argv: &[String]) -> bool {
+    argv.iter().any(|x| x == "--repl" || x == "--no-tui")
+        || std::env::var("MINI_CODE_NO_TUI").ok().as_deref() == Some("1")
 }
 
 async fn run_repl_loop(
@@ -379,7 +389,36 @@ async fn real_main() -> Result<()> {
             Arc::new(AnthropicModelAdapter::new(tools.clone(), cwd.clone()))
         };
 
-    let interactive = is_interactive_terminal();
+    let force_tui = should_force_tui(&argv);
+    let force_repl = should_force_repl(&argv);
+    if force_tui && force_repl {
+        return Err(anyhow!("参数冲突：不能同时使用 --tui 和 --repl/--no-tui。"));
+    }
+
+    let stdin_tty = std::io::stdin().is_terminal();
+    let stdout_tty = std::io::stdout().is_terminal();
+    let interactive = if force_repl {
+        false
+    } else if force_tui {
+        if !(stdin_tty && stdout_tty) {
+            return Err(anyhow!(
+                "--tui 已指定，但当前终端不支持 TUI（stdin_tty={}, stdout_tty={}）。",
+                stdin_tty,
+                stdout_tty
+            ));
+        }
+        true
+    } else {
+        is_interactive_terminal()
+    };
+
+    if !interactive && stdout_tty {
+        eprintln!(
+            "未进入 TUI：stdin_tty={}, stdout_tty={}。可尝试在真实终端直接运行，或使用 --tui 强制检测。",
+            stdin_tty, stdout_tty
+        );
+    }
+
     if interactive {
         run_tui_app(TuiAppArgs {
             runtime,

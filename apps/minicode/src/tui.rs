@@ -1,19 +1,25 @@
-use std::io::{self, Write};
+use std::io::{self, Stdout};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::cursor::{Hide, MoveTo, Show};
+use crossterm::cursor::Show;
 use crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
     MouseEventKind,
 };
-use crossterm::style::Print;
+use crossterm::execute;
 use crossterm::terminal::{
-    Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use crossterm::{execute, queue};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
+use unicode_width::UnicodeWidthStr;
 
 use crate::agent_loop::{AgentTurnCallbacks, run_agent_turn};
 use crate::cli_commands::{SLASH_COMMANDS, find_matching_slash_commands, try_handle_local_command};
@@ -23,6 +29,29 @@ use crate::permissions::PermissionManager;
 use crate::prompt::build_system_prompt;
 use crate::tool::{ToolContext, ToolRegistry};
 use crate::types::{ChatMessage, ModelAdapter};
+
+struct TerminalGuard;
+
+impl TerminalGuard {
+    fn enter() -> Result<Self> {
+        let mut stdout = io::stdout();
+        enable_raw_mode()?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture, Show)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(
+            io::stdout(),
+            Show,
+            DisableMouseCapture,
+            LeaveAlternateScreen
+        );
+    }
+}
 
 #[derive(Clone)]
 struct TranscriptEntry {
@@ -44,6 +73,7 @@ struct ScreenState {
     history_index: usize,
     history_draft: String,
     is_busy: bool,
+    message_count: usize,
 }
 
 pub struct TuiAppArgs {
@@ -111,6 +141,49 @@ fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     serde_json::to_string(input).unwrap_or_else(|_| "(invalid input)".to_string())
 }
 
+fn char_len(value: &str) -> usize {
+    value.chars().count()
+}
+
+fn display_width(value: &str) -> usize {
+    UnicodeWidthStr::width(value)
+}
+
+fn byte_index_from_char_offset(value: &str, char_offset: usize) -> usize {
+    if char_offset == 0 {
+        return 0;
+    }
+    match value.char_indices().nth(char_offset) {
+        Some((index, _)) => index,
+        None => value.len(),
+    }
+}
+
+fn insert_char_at(value: &mut String, char_offset: usize, ch: char) {
+    let index = byte_index_from_char_offset(value, char_offset);
+    value.insert(index, ch);
+}
+
+fn remove_char_before(value: &mut String, char_offset: usize) -> bool {
+    if char_offset == 0 {
+        return false;
+    }
+    let start = byte_index_from_char_offset(value, char_offset - 1);
+    let end = byte_index_from_char_offset(value, char_offset);
+    value.replace_range(start..end, "");
+    true
+}
+
+fn remove_char_at(value: &mut String, char_offset: usize) -> bool {
+    if char_offset >= char_len(value) {
+        return false;
+    }
+    let start = byte_index_from_char_offset(value, char_offset);
+    let end = byte_index_from_char_offset(value, char_offset + 1);
+    value.replace_range(start..end, "");
+    true
+}
+
 fn get_visible_commands(input: &str) -> Vec<&'static crate::cli_commands::SlashCommand> {
     if !input.starts_with('/') {
         return vec![];
@@ -134,7 +207,7 @@ fn history_up(state: &mut ScreenState) -> bool {
     }
     state.history_index -= 1;
     state.input = state.history[state.history_index].clone();
-    state.cursor_offset = state.input.len();
+    state.cursor_offset = char_len(&state.input);
     true
 }
 
@@ -148,7 +221,7 @@ fn history_down(state: &mut ScreenState) -> bool {
     } else {
         state.input = state.history[state.history_index].clone();
     }
-    state.cursor_offset = state.input.len();
+    state.cursor_offset = char_len(&state.input);
     true
 }
 
@@ -177,80 +250,142 @@ fn scroll_transcript_by(state: &mut ScreenState, delta: isize) -> bool {
     state.transcript_scroll_offset = next;
     true
 }
+fn sanitize_line(text: &str) -> String {
+    text.chars()
+        .filter(|ch| !ch.is_control() || *ch == '\t')
+        .collect::<String>()
+        .replace('\t', "    ")
+}
 
-fn render_screen(args: &TuiAppArgs, state: &ScreenState) -> Result<()> {
-    let mut stdout = io::stdout();
-    queue!(stdout, MoveTo(0, 0), Clear(ClearType::All))?;
-
+fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<Line<'static>> {
     let model = args
         .runtime
         .as_ref()
         .map(|x| x.model.clone())
         .unwrap_or_else(|| "(unconfigured)".to_string());
+    let recent = state
+        .recent_tools
+        .iter()
+        .rev()
+        .take(3)
+        .map(|(name, ok)| format!("{}:{}", name, if *ok { "ok" } else { "err" }))
+        .collect::<Vec<_>>()
+        .join(", ");
 
-    queue!(
-        stdout,
-        Print(format!(
-            "MiniCode-RS | model={} | cwd={}\n",
-            model,
-            args.cwd.display()
-        )),
-        Print(format!("{}\n", args.permissions.get_summary().join(" | "))),
-        Print(format!(
-            "transcript={} messages={} skills={} mcp={}\n\n",
+    vec![
+        Line::from(format!("model={} | cwd={}", model, args.cwd.display())),
+        Line::from(args.permissions.get_summary().join(" | ")),
+        Line::from(format!(
+            "transcript={} messages={} skills={} mcp={}{}",
             state.transcript.len(),
-            0,
+            state.message_count,
             args.tools.get_skills().len(),
-            args.tools.get_mcp_servers().len()
-        )),
-        Print("================ session feed ================\n")
-    )?;
-
-    let window = get_transcript_window_size();
-    let lines = render_transcript_lines(&state.transcript);
-    let max_offset = lines.len().saturating_sub(window);
-    let offset = state.transcript_scroll_offset.min(max_offset);
-    let end = lines.len().saturating_sub(offset);
-    let start = end.saturating_sub(window);
-
-    for line in lines.iter().skip(start).take(end.saturating_sub(start)) {
-        queue!(stdout, Print(line), Print("\n"))?;
-    }
-
-    queue!(
-        stdout,
-        Print("\n=============================================\n"),
-        Print(format!(
-            "status: {}{}\n",
-            state.status.clone().unwrap_or_else(|| "Ready".to_string()),
-            state
-                .active_tool
-                .as_ref()
-                .map(|x| format!(" | active={}", x))
-                .unwrap_or_default()
-        )),
-        Print("prompt: Enter send | Tab complete slash | Esc clear | Ctrl+C exit\n")
-    )?;
-
-    let visible_commands = get_visible_commands(&state.input);
-    if !visible_commands.is_empty() {
-        queue!(stdout, Print("commands:\n"))?;
-        for (idx, cmd) in visible_commands.iter().enumerate() {
-            let mark = if idx == state.selected_slash_index {
-                ">"
+            args.tools.get_mcp_servers().len(),
+            if recent.is_empty() {
+                String::new()
             } else {
-                " "
-            };
-            queue!(
-                stdout,
-                Print(format!("{} {:<24} {}\n", mark, cmd.usage, cmd.description))
-            )?;
-        }
-    }
+                format!(" | recent={}", recent)
+            }
+        )),
+    ]
+}
 
-    queue!(stdout, Print("\nmini-code> "))?;
-    queue!(stdout, Print(&state.input), Print("\n"))?;
-    stdout.flush()?;
+fn render_screen(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    args: &TuiAppArgs,
+    state: &ScreenState,
+) -> Result<()> {
+    let visible_commands = get_visible_commands(&state.input);
+    let command_rows = if visible_commands.is_empty() {
+        0u16
+    } else {
+        (visible_commands.len().min(5) + 2) as u16
+    };
+
+    terminal.draw(|frame| {
+        let area = frame.area();
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(5),
+                Constraint::Min(8),
+                Constraint::Length(command_rows),
+                Constraint::Length(3),
+            ])
+            .split(area);
+
+        let header = Paragraph::new(build_header_lines(args, state))
+            .block(Block::default().title("MiniCode-RS").borders(Borders::ALL))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(header, chunks[0]);
+
+        let feed_lines = render_transcript_lines(&state.transcript)
+            .into_iter()
+            .map(|line| Line::from(sanitize_line(&line)))
+            .collect::<Vec<_>>();
+        let fallback = vec![Line::from("(暂无消息，输入 /help 查看命令)")];
+        let feed = Paragraph::new(if feed_lines.is_empty() {
+            fallback
+        } else {
+            feed_lines
+        })
+        .block(Block::default().title("Session Feed").borders(Borders::ALL))
+        .wrap(Wrap { trim: false })
+        .scroll((state.transcript_scroll_offset as u16, 0));
+        frame.render_widget(feed, chunks[1]);
+
+        if command_rows > 0 {
+            let items = visible_commands
+                .iter()
+                .take(5)
+                .enumerate()
+                .map(|(idx, cmd)| {
+                    let marker = if idx == state.selected_slash_index {
+                        ">"
+                    } else {
+                        " "
+                    };
+                    ListItem::new(format!("{} {} - {}", marker, cmd.usage, cmd.description))
+                })
+                .collect::<Vec<_>>();
+            let commands =
+                List::new(items).block(Block::default().title("Commands").borders(Borders::ALL));
+            frame.render_widget(commands, chunks[2]);
+        }
+
+        let prompt_input = sanitize_line(&state.input);
+        let prompt_text = vec![
+            Line::from(format!(
+                "status: {}{}",
+                state.status.clone().unwrap_or_else(|| "Ready".to_string()),
+                state
+                    .active_tool
+                    .as_ref()
+                    .map(|x| format!(" | active={}", x))
+                    .unwrap_or_default()
+            ))
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+            Line::from(format!("mini-code> {}", prompt_input)),
+        ];
+        let prompt = Paragraph::new(prompt_text)
+            .block(Block::default().title("Input").borders(Borders::ALL))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(prompt, chunks[3]);
+
+        let prompt_area: Rect = chunks[3];
+        let prefix_width = display_width("mini-code> ") as u16;
+        let cursor_text = state
+            .input
+            .chars()
+            .take(state.cursor_offset.min(char_len(&state.input)))
+            .collect::<String>();
+        let cursor_dx = display_width(&cursor_text) as u16;
+        let cursor_x = (prompt_area.x + 1 + prefix_width + cursor_dx)
+            .min(prompt_area.x + prompt_area.width.saturating_sub(2));
+        let cursor_y =
+            (prompt_area.y + 2).min(prompt_area.y + prompt_area.height.saturating_sub(1));
+        frame.set_cursor_position((cursor_x, cursor_y));
+    })?;
     Ok(())
 }
 
@@ -499,12 +634,13 @@ async fn handle_submit(
 }
 
 pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
-    let mut stdout = io::stdout();
-    enable_raw_mode()?;
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, Hide)?;
+    let _terminal_guard = TerminalGuard::enter()?;
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend)?;
 
     let mut state = ScreenState {
         history: load_history_entries(),
+        message_count: 1,
         ..ScreenState::default()
     };
     state.history_index = state.history.len();
@@ -520,7 +656,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
 
     let mut should_exit = false;
     while !should_exit {
-        render_screen(&args, &state)?;
+        render_screen(&mut terminal, &args, &state)?;
 
         if event::poll(Duration::from_millis(150))? {
             match event::read()? {
@@ -558,7 +694,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                                     .unwrap_or(state.input.as_str());
                                 if state.input.trim() != selected {
                                     state.input = selected.to_string();
-                                    state.cursor_offset = state.input.len();
+                                    state.cursor_offset = char_len(&state.input);
                                     state.selected_slash_index = 0;
                                     continue;
                                 }
@@ -570,13 +706,13 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             should_exit =
                                 handle_submit(&mut args, &mut state, &mut messages, submitted)
                                     .await?;
+                            state.message_count = messages.len();
                         }
                         KeyEvent {
                             code: KeyCode::Backspace,
                             ..
                         } => {
-                            if state.cursor_offset > 0 {
-                                state.input.remove(state.cursor_offset - 1);
+                            if remove_char_before(&mut state.input, state.cursor_offset) {
                                 state.cursor_offset -= 1;
                             }
                             state.selected_slash_index = 0;
@@ -585,9 +721,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             code: KeyCode::Delete,
                             ..
                         } => {
-                            if state.cursor_offset < state.input.len() {
-                                state.input.remove(state.cursor_offset);
-                            }
+                            let _ = remove_char_at(&mut state.input, state.cursor_offset);
                             state.selected_slash_index = 0;
                         }
                         KeyEvent {
@@ -600,7 +734,8 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             code: KeyCode::Right,
                             ..
                         } => {
-                            state.cursor_offset = (state.cursor_offset + 1).min(state.input.len());
+                            state.cursor_offset =
+                                (state.cursor_offset + 1).min(char_len(&state.input));
                         }
                         KeyEvent {
                             code: KeyCode::PageUp,
@@ -622,7 +757,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                                     .get(state.selected_slash_index.min(visible_commands.len() - 1))
                                 {
                                     state.input = selected.usage.to_string();
-                                    state.cursor_offset = state.input.len();
+                                    state.cursor_offset = char_len(&state.input);
                                     state.selected_slash_index = 0;
                                 }
                             }
@@ -665,7 +800,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                         KeyEvent {
                             code: KeyCode::End, ..
                         } => {
-                            state.cursor_offset = state.input.len();
+                            state.cursor_offset = char_len(&state.input);
                         }
                         KeyEvent {
                             code: KeyCode::Esc, ..
@@ -694,7 +829,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             if state.input.is_empty() {
                                 state.transcript_scroll_offset = 0;
                             } else {
-                                state.cursor_offset = state.input.len();
+                                state.cursor_offset = char_len(&state.input);
                             }
                         }
                         KeyEvent {
@@ -726,9 +861,9 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             ..
                         } => {
                             if !modifiers.contains(KeyModifiers::CONTROL) {
-                                let at = state.cursor_offset.min(state.input.len());
-                                state.input.insert(at, ch);
-                                state.cursor_offset = at + ch.len_utf8();
+                                let at = state.cursor_offset.min(char_len(&state.input));
+                                insert_char_at(&mut state.input, at, ch);
+                                state.cursor_offset = at + 1;
                                 state.selected_slash_index = 0;
                                 state.history_index = state.history.len();
                             }
@@ -743,12 +878,5 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
     }
 
     let _ = save_history_entries(&state.history);
-    disable_raw_mode()?;
-    execute!(
-        io::stdout(),
-        Show,
-        DisableMouseCapture,
-        LeaveAlternateScreen
-    )?;
     Ok(())
 }
