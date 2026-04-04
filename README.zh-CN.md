@@ -1,7 +1,7 @@
 # MiniCode-rs | RushCode
 
 <p align="center">
-  <img src="./docs/logo.svg" alt="MiniCode Logo" width="120" />
+  <img src="./docs/logo.png" alt="MiniCode Logo" width="120" />
 </p>
 
 这是 MiniCode 的 Rust 版本实现，也可以称之为 RushCode。它在功能上基本保持一致，但使用 Rust 语言重写了核心逻辑和终端 UI。
@@ -31,6 +31,12 @@ MiniCode 围绕一个实用的 terminal-first agent loop 构建：
 - 在同一个终端会话里返回最终结果
 
 整个项目有意保持紧凑，这样主控制流、工具模型和 TUI 行为都更容易理解和扩展。
+
+## 多语言版本
+
+- TypeScript: [MiniCode](https://github.com/LiuMengxuan04/MiniCode)
+- Rust (this repo): [MiniCode-rs](https://github.com/harkerhand/MiniCode-rs)
+- Python: coming soon
 
 ## 目录
 

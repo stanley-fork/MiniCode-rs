@@ -1,7 +1,7 @@
 # MiniCode-rs | RushCode
 
 <p align="center">
-  <img src="./docs/logo.svg" alt="MiniCode Logo" width="120" />
+  <img src="./docs/logo.png" alt="MiniCode Logo" width="120" />
 </p>
 
 This is the Rust implementation of MiniCode, also called RushCode. It keeps the overall workflow aligned with the original project while rewriting core runtime logic and terminal UI in Rust.
@@ -31,6 +31,12 @@ MiniCode is built around a practical terminal-first agent loop:
 - return a final response in the same terminal session
 
 The project is intentionally compact, so the control flow, tool model, and TUI behavior remain easy to understand and extend.
+
+## Multi-language Versions
+
+- TypeScript: [MiniCode](https://github.com/LiuMengxuan04/MiniCode)
+- Rust (this repo): [MiniCode-rs](https://github.com/harkerhand/MiniCode-rs)
+- Python: coming soon
 
 ## Table of Contents
 
