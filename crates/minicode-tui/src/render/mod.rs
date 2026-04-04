@@ -107,7 +107,6 @@ pub(crate) fn render_screen(
                     .border_type(BorderType::Rounded)
                     .style(theme.session_style()),
             )
-            .wrap(Wrap { trim: false })
             .scroll((scroll_from_top as u16, 0));
         frame.render_widget(feed, chunks[1]);
 
