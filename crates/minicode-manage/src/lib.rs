@@ -8,222 +8,146 @@ use minicode_core::config::{
 };
 use minicode_skills::{discover_skills, install_skill, remove_managed_skill};
 
-/// 打印管理命令帮助信息。
-fn print_usage() {
-    println!(
-        "minicode management commands\n\nminicode mcp list [--project]\nminicode mcp add <name> [--project] [--protocol <auto|content-length|newline-json>] [--env KEY=VALUE ...] -- <command> [args...]\nminicode mcp remove <name> [--project]\n\nminicode skills list\nminicode skills add <path-to-skill-or-dir> [--name <name>] [--project]\nminicode skills remove <name> [--project]"
-    );
-}
+/// 列出 MCP 服务
+pub async fn list_mcp_servers(cwd: &Path, scope: &str) -> Result<bool> {
+    let servers = load_scoped_mcp_servers(scope, cwd)?;
 
-/// 解析 `--project` 作用域并返回剩余参数。
-fn parse_scope(args: &[String]) -> (String, Vec<String>) {
-    let mut rest = args.to_vec();
-    if let Some(idx) = rest.iter().position(|x| x == "--project") {
-        rest.remove(idx);
-        return ("project".to_string(), rest);
-    }
-    ("user".to_string(), rest)
-}
-
-/// 读取并移除单值选项参数。
-fn take_option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
-    if let Some(idx) = args.iter().position(|x| x == name) {
-        if idx + 1 >= args.len() {
-            return Err(anyhow!("Missing value for {name}"));
-        }
-        let value = args[idx + 1].clone();
-        args.remove(idx + 1);
-        args.remove(idx);
-        return Ok(Some(value));
-    }
-    Ok(None)
-}
-
-/// 读取并移除可重复选项参数。
-fn take_repeat_option(args: &mut Vec<String>, name: &str) -> Result<Vec<String>> {
-    let mut values = vec![];
-    while let Some(idx) = args.iter().position(|x| x == name) {
-        if idx + 1 >= args.len() {
-            return Err(anyhow!("Missing value for {name}"));
-        }
-        let value = args[idx + 1].clone();
-        args.remove(idx + 1);
-        args.remove(idx);
-        values.push(value);
-    }
-    Ok(values)
-}
-
-/// 解析 `KEY=VALUE` 形式的环境变量参数。
-fn parse_env_pairs(entries: &[String]) -> Result<HashMap<String, serde_json::Value>> {
-    let mut env = HashMap::new();
-    for entry in entries {
-        let Some(idx) = entry.find('=') else {
-            return Err(anyhow!("Invalid --env value: {entry}"));
+    if servers.is_empty() {
+        let path = if scope == "project" {
+            project_mcp_path(cwd)
+        } else {
+            mini_code_mcp_path()
         };
-        let k = entry[..idx].trim();
-        let v = entry[idx + 1..].to_string();
-        if k.is_empty() {
-            return Err(anyhow!("Invalid --env value: {entry}"));
-        }
-        env.insert(k.to_string(), serde_json::Value::String(v));
+        println!("No MCP servers configured in {}.", path.display());
+        return Ok(true);
     }
+
+    for (name, server) in servers {
+        let args = server.args.unwrap_or_default().join(" ");
+        let protocol = server
+            .protocol
+            .as_deref()
+            .map(|p| format!(" protocol={}", p))
+            .unwrap_or_default();
+
+        println!("{}: {} {}{}", name, server.command, args, protocol);
+    }
+    Ok(true)
+}
+
+/// 添加 MCP 服务
+pub async fn add_mcp_server(
+    cwd: &Path,
+    scope: &str,
+    name: String,
+    protocol: Option<String>,
+    env_vars: HashMap<String, serde_json::Value>,
+    command: Vec<String>,
+) -> Result<bool> {
+    if command.is_empty() {
+        return Err(anyhow!("Missing MCP command"));
+    }
+
+    let mut existing = load_scoped_mcp_servers(scope, cwd)?;
+    existing.insert(
+        name.clone(),
+        McpServerConfig {
+            command: command[0].clone(),
+            args: if command.len() > 1 {
+                Some(command[1..].to_vec())
+            } else {
+                Some(vec![])
+            },
+            env: if env_vars.is_empty() {
+                None
+            } else {
+                Some(env_vars)
+            },
+            cwd: None,
+            enabled: None,
+            protocol,
+        },
+    );
+
+    save_scoped_mcp_servers(scope, cwd, existing)?;
+    println!("Added MCP server {}", name);
+    Ok(true)
+}
+
+/// 移除 MCP 服务
+pub async fn remove_mcp_server(cwd: &Path, scope: &str, name: String) -> Result<bool> {
+    let mut existing = load_scoped_mcp_servers(scope, cwd)?;
+
+    if existing.remove(&name).is_none() {
+        println!("MCP server {} not found", name);
+        return Ok(true);
+    }
+
+    save_scoped_mcp_servers(scope, cwd, existing)?;
+    println!("Removed MCP server {}", name);
+    Ok(true)
+}
+
+/// 列出技能
+pub async fn list_skills(cwd: &Path) -> Result<bool> {
+    let skills = discover_skills(cwd);
+    if skills.is_empty() {
+        println!("No skills discovered.");
+        return Ok(true);
+    }
+
+    for skill in skills {
+        println!("{}: {} ({})", skill.name, skill.description, skill.path);
+    }
+    Ok(true)
+}
+
+/// 安装技能
+pub async fn add_skill(
+    cwd: &Path,
+    scope: &str,
+    path: String,
+    name: Option<String>,
+) -> Result<bool> {
+    let (installed_name, target) = install_skill(cwd, &path, name, scope)?;
+    println!("Installed skill {} at {}", installed_name, target);
+    Ok(true)
+}
+
+/// 移除技能
+pub async fn remove_skill(cwd: &Path, scope: &str, name: String) -> Result<bool> {
+    let (removed, target) = remove_managed_skill(cwd, &name, scope)?;
+
+    if !removed {
+        println!("Skill {} not found at {}", name, target);
+        return Ok(true);
+    }
+
+    println!("Removed skill {} from {}", name, target);
+    Ok(true)
+}
+
+/// 解析 KEY=VALUE 形式的环境变量
+pub fn parse_env_pairs(entries: &[String]) -> Result<HashMap<String, serde_json::Value>> {
+    let mut env = HashMap::new();
+
+    for entry in entries {
+        let Some(eq_idx) = entry.find('=') else {
+            return Err(anyhow!("Invalid environment variable format: {} (expected KEY=VALUE)", entry));
+        };
+
+        let key = entry[..eq_idx].trim();
+        let value = entry[eq_idx + 1..].to_string();
+
+        if key.is_empty() {
+            return Err(anyhow!(
+                "Invalid environment variable: empty key in {}",
+                entry
+            ));
+        }
+
+        env.insert(key.to_string(), serde_json::Value::String(value));
+    }
+
     Ok(env)
-}
-
-/// 处理 `minicode mcp ...` 管理子命令。
-async fn handle_mcp_command(cwd: &Path, args: &[String]) -> Result<bool> {
-    let Some(subcommand) = args.first() else {
-        print_usage();
-        return Ok(true);
-    };
-
-    let (scope, rest) = parse_scope(&args[1..]);
-
-    match subcommand.as_str() {
-        "list" => {
-            let servers = load_scoped_mcp_servers(&scope, cwd)?;
-            if servers.is_empty() {
-                let path = if scope == "project" {
-                    project_mcp_path(cwd)
-                } else {
-                    mini_code_mcp_path()
-                };
-                println!("No MCP servers configured in {}.", path.display());
-                return Ok(true);
-            }
-            for (name, server) in servers {
-                let args = server.args.unwrap_or_default().join(" ");
-                let protocol = server
-                    .protocol
-                    .map(|x| format!(" protocol={x}"))
-                    .unwrap_or_default();
-                println!("{}: {} {}{}", name, server.command, args, protocol);
-            }
-            Ok(true)
-        }
-        "add" => {
-            let sep = rest
-                .iter()
-                .position(|x| x == "--")
-                .ok_or_else(|| anyhow!("Use -- before MCP command."))?;
-            let mut head = rest[..sep].to_vec();
-            let command_parts = rest[sep + 1..].to_vec();
-            if command_parts.is_empty() {
-                return Err(anyhow!("Missing MCP command after --."));
-            }
-            if head.is_empty() {
-                return Err(anyhow!("Missing MCP server name."));
-            }
-            let name = head.remove(0);
-            let protocol = take_option(&mut head, "--protocol")?;
-            let env = parse_env_pairs(&take_repeat_option(&mut head, "--env")?)?;
-            if !head.is_empty() {
-                return Err(anyhow!("Unknown arguments: {}", head.join(" ")));
-            }
-
-            let mut existing = load_scoped_mcp_servers(&scope, cwd)?;
-            existing.insert(
-                name.clone(),
-                McpServerConfig {
-                    command: command_parts[0].clone(),
-                    args: if command_parts.len() > 1 {
-                        Some(command_parts[1..].to_vec())
-                    } else {
-                        Some(vec![])
-                    },
-                    env: if env.is_empty() { None } else { Some(env) },
-                    cwd: None,
-                    enabled: None,
-                    protocol,
-                },
-            );
-            save_scoped_mcp_servers(&scope, cwd, existing)?;
-            println!("Added MCP server {}", name);
-            Ok(true)
-        }
-        "remove" => {
-            let Some(name) = rest.first() else {
-                return Err(anyhow!("Missing MCP server name."));
-            };
-            let mut existing = load_scoped_mcp_servers(&scope, cwd)?;
-            if existing.remove(name).is_none() {
-                println!("MCP server {} not found", name);
-                return Ok(true);
-            }
-            save_scoped_mcp_servers(&scope, cwd, existing)?;
-            println!("Removed MCP server {}", name);
-            Ok(true)
-        }
-        _ => {
-            print_usage();
-            Ok(true)
-        }
-    }
-}
-
-/// 处理 `minicode skills ...` 管理子命令。
-async fn handle_skills_command(cwd: &Path, args: &[String]) -> Result<bool> {
-    let Some(subcommand) = args.first() else {
-        print_usage();
-        return Ok(true);
-    };
-    let (scope, mut rest) = parse_scope(&args[1..]);
-
-    match subcommand.as_str() {
-        "list" => {
-            let skills = discover_skills(cwd);
-            if skills.is_empty() {
-                println!("No skills discovered.");
-                return Ok(true);
-            }
-            for skill in skills {
-                println!("{}: {} ({})", skill.name, skill.description, skill.path);
-            }
-            Ok(true)
-        }
-        "add" => {
-            let Some(source_path) = rest.first().cloned() else {
-                return Err(anyhow!("Missing skill source path."));
-            };
-            rest.remove(0);
-            let name = take_option(&mut rest, "--name")?;
-            let (name, target) = install_skill(cwd, &source_path, name, &scope)?;
-            println!("Installed skill {} at {}", name, target);
-            Ok(true)
-        }
-        "remove" => {
-            let Some(name) = rest.first().cloned() else {
-                return Err(anyhow!("Missing skill name."));
-            };
-            let (removed, target) = remove_managed_skill(cwd, &name, &scope)?;
-            if !removed {
-                println!("Skill {} not found at {}", name, target);
-                return Ok(true);
-            }
-            println!("Removed skill {} from {}", name, target);
-            Ok(true)
-        }
-        _ => {
-            print_usage();
-            Ok(true)
-        }
-    }
-}
-
-/// 统一分发管理命令入口。
-pub async fn maybe_handle_management_command(cwd: &Path, argv: &[String]) -> Result<bool> {
-    let Some(category) = argv.first() else {
-        return Ok(false);
-    };
-
-    match category.as_str() {
-        "mcp" => handle_mcp_command(cwd, &argv[1..]).await,
-        "skills" => handle_skills_command(cwd, &argv[1..]).await,
-        "help" | "--help" | "-h" => {
-            print_usage();
-            Ok(true)
-        }
-        _ => Ok(false),
-    }
 }
