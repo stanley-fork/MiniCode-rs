@@ -20,6 +20,7 @@ async fn main() {
 
 /// 异步主程序逻辑：解析参数、初始化运行时并启动 TUI
 async fn run() -> Result<()> {
+    verify_interactive_terminal()?;
     let cwd = std::env::current_dir()?;
     let cli = Cli::parse();
 
@@ -128,8 +129,6 @@ async fn launch_tui_app(
     let mcp_servers = tools.get_mcp_servers();
     log_mcp_bootstrap(&mcp_servers);
     set_mcp_startup_logging_enabled(false);
-
-    verify_interactive_terminal()?;
 
     run_tui_app(TuiAppArgs {
         runtime: runtime.clone(),

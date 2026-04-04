@@ -56,19 +56,19 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
 
     vec![
         Line::from(vec![
-            Span::styled("project", theme.header_label_project_style()),
+            Span::styled("project", theme.header_label_info_style()),
             Span::raw(" "),
             Span::raw(args.cwd.display().to_string()),
             Span::raw("   "),
-            Span::styled("provider", theme.header_label_provider_style()),
+            Span::styled("provider", theme.header_label_info_style()),
             Span::raw(" "),
             Span::raw(provider),
             Span::raw("   "),
-            Span::styled("model", theme.header_label_model_style()),
+            Span::styled("model", theme.header_label_info_style()),
             Span::raw(" "),
             Span::raw(model),
             Span::raw("   "),
-            Span::styled("auth", theme.header_label_auth_style()),
+            Span::styled("auth", theme.header_label_info_style()),
             Span::raw(" "),
             Span::raw(auth),
         ]),

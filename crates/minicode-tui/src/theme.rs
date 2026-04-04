@@ -27,9 +27,6 @@ pub struct ColorTheme {
     /// Expandable items (like [展开])
     pub expandable: Color,
     // Header labels
-    pub header_label_project: Color,
-    pub header_label_provider: Color,
-    pub header_label_model: Color,
     pub header_label_auth: Color,
     pub header_label_session: Color,
     pub header_label_permissions: Color,
@@ -50,9 +47,6 @@ impl Default for ColorTheme {
             tool_error: Color::Rgb(180, 100, 100), // Muted rose
             command_highlight: Color::Rgb(100, 110, 140), // Muted slate-blue
             expandable: Color::Rgb(110, 150, 150), // Muted cyan-gray
-            header_label_project: Color::Rgb(110, 150, 140), // Muted teal
-            header_label_provider: Color::Rgb(150, 110, 170), // Muted lilac
-            header_label_model: Color::Rgb(140, 160, 100), // Muted green
             header_label_auth: Color::Rgb(170, 150, 100), // Muted ochre
             header_label_session: Color::Rgb(160, 120, 100), // Muted terracotta
             header_label_permissions: Color::Rgb(130, 100, 160), // Muted plum
@@ -113,29 +107,8 @@ impl ColorTheme {
             .add_modifier(Modifier::BOLD)
     }
 
-    /// Get style for header project label
-    pub fn header_label_project_style(&self) -> Style {
-        Style::default()
-            .fg(self.header_label_project)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    /// Get style for header provider label
-    pub fn header_label_provider_style(&self) -> Style {
-        Style::default()
-            .fg(self.header_label_provider)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    /// Get style for header model label
-    pub fn header_label_model_style(&self) -> Style {
-        Style::default()
-            .fg(self.header_label_model)
-            .add_modifier(Modifier::BOLD)
-    }
-
     /// Get style for header auth label
-    pub fn header_label_auth_style(&self) -> Style {
+    pub fn header_label_info_style(&self) -> Style {
         Style::default()
             .fg(self.header_label_auth)
             .add_modifier(Modifier::BOLD)

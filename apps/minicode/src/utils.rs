@@ -1,7 +1,11 @@
 use std::{io::IsTerminal, path::Path};
 
 use anyhow::{Result, anyhow};
+use crossterm::terminal::size as terminal_size;
 use minicode_core::*;
+
+const DEFAULT_MIN_TERMINAL_WIDTH: u16 = 120;
+const DEFAULT_MIN_TERMINAL_HEIGHT: u16 = 30;
 
 /// 将日志文本按字符数截断，超出时追加省略号
 pub fn truncate_log_text(input: &str, max_chars: usize) -> String {
@@ -127,6 +131,32 @@ pub fn verify_interactive_terminal() -> Result<()> {
             stdout_tty
         ));
     }
+
+    let min_width = std::env::var("MINI_CODE_MIN_TERMINAL_WIDTH")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_MIN_TERMINAL_WIDTH);
+    let min_height = std::env::var("MINI_CODE_MIN_TERMINAL_HEIGHT")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(DEFAULT_MIN_TERMINAL_HEIGHT);
+    let (width, height) =
+        terminal_size().map_err(|err| anyhow!("无法读取终端尺寸，请在交互式终端运行: {err}"))?;
+    if width < min_width {
+        return Err(anyhow!(
+            "终端宽度过小：当前 {} 列，最少需要 {} 列。请拉宽终端后重试，或设置 MINI_CODE_MIN_TERMINAL_WIDTH 调整阈值。",
+            width,
+            min_width
+        ));
+    }
+    if height < min_height {
+        return Err(anyhow!(
+            "终端高度过小：当前 {} 行，最少需要 {} 行。请拉高终端后重试，或设置 MINI_CODE_MIN_TERMINAL_HEIGHT 调整阈值。",
+            height,
+            min_height
+        ));
+    }
+
     Ok(())
 }
 
