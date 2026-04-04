@@ -89,9 +89,8 @@ impl AnthropicModelAdapter {
         if let Some(ms) = retry_after_ms {
             return ms;
         }
-        let base = (BASE_RETRY_DELAY_MS
-            * (2u64.saturating_pow(attempt.saturating_sub(1) as u32)))
-        .min(MAX_RETRY_DELAY_MS);
+        let base = (BASE_RETRY_DELAY_MS * (2u64.saturating_pow(attempt.saturating_sub(1) as u32)))
+            .min(MAX_RETRY_DELAY_MS);
         let mut rng = rand::rng();
         let jitter: f64 = rng.random_range(0.0..0.25);
         (base as f64 * (1.0 + jitter)) as u64

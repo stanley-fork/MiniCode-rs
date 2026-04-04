@@ -3,6 +3,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::state::PendingApproval;
+use crate::theme::theme;
 
 use super::ui_utils::sanitize_line;
 
@@ -27,6 +28,7 @@ fn truncate_for_dialog(input: &str, max_chars: usize) -> String {
 
 /// 构建权限审批弹窗的渲染文本行。
 pub(super) fn build_approval_lines(pending: &PendingApproval) -> Vec<Line<'static>> {
+    let theme = theme();
     let kind = match pending.request.kind {
         PermissionPromptKind::Path => "PATH",
         PermissionPromptKind::Command => "COMMAND",
@@ -68,9 +70,9 @@ pub(super) fn build_approval_lines(pending: &PendingApproval) -> Vec<Line<'stati
             PermissionDecision::AllowOnce
             | PermissionDecision::AllowAlways
             | PermissionDecision::AllowTurn
-            | PermissionDecision::AllowAllTurn => Color::Green,
+            | PermissionDecision::AllowAllTurn => theme.assistant,
             PermissionDecision::DenyWithFeedback => Color::LightYellow,
-            PermissionDecision::DenyOnce | PermissionDecision::DenyAlways => Color::Red,
+            PermissionDecision::DenyOnce | PermissionDecision::DenyAlways => theme.tool_error,
         };
         lines.push(Line::from(vec![
             Span::styled(

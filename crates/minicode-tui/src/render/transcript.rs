@@ -2,6 +2,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::state::{ScreenState, TranscriptEntry};
+use crate::theme::theme;
 
 use super::ui_utils::sanitize_line;
 
@@ -31,21 +32,19 @@ fn is_tool_entry(entry: &TranscriptEntry) -> bool {
 
 /// 根据消息类型生成标题行样式。
 fn transcript_title_line(kind: &str) -> Line<'static> {
-    let (label, color) = match kind {
-        "assistant" => ("assistant", Color::Green),
-        "user" => ("you", Color::Cyan),
-        "progress" => ("progress", Color::Yellow),
-        "tool:error" => ("tool err", Color::Red),
-        "tool" => ("tool", Color::Magenta),
-        _ => (kind, Color::Gray),
+    let theme = theme();
+    let (label, style) = match kind {
+        "assistant" => ("assistant", theme.assistant_style()),
+        "user" => ("you", theme.user_style()),
+        "progress" => ("progress", theme.progress_style()),
+        "tool:error" => ("tool err", theme.tool_error_style()),
+        "tool" => ("tool", theme.tool_style()),
+        _ => (kind, Style::default().fg(Color::Gray)),
     };
     Line::from(vec![
-        Span::styled("▌", Style::default().fg(color)),
+        Span::styled("▌", style),
         Span::raw(" "),
-        Span::styled(
-            label.to_string(),
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(label.to_string(), style.add_modifier(Modifier::BOLD)),
     ])
 }
 
@@ -56,6 +55,7 @@ pub(super) struct SessionRender {
 
 /// 将会话转录渲染为可显示的行集合。
 pub(super) fn transcript_lines(state: &ScreenState) -> SessionRender {
+    let theme = theme();
     let mut lines = Vec::new();
     let mut toggle_targets = Vec::new();
     for (idx, entry) in state.transcript.iter().enumerate() {
@@ -86,27 +86,30 @@ pub(super) fn transcript_lines(state: &ScreenState) -> SessionRender {
                 total.min(TOOL_PREVIEW_LINES)
             };
             let hidden = total.saturating_sub(preview_len);
-            let (label, color) = if entry.kind == "tool:error" {
-                ("tool err", Color::Red)
+            let style = if entry.kind == "tool:error" {
+                theme.tool_error_style()
             } else {
-                ("tool", Color::Magenta)
+                theme.tool_style()
             };
             let title_line_idx = lines.len();
             let mut title_spans = vec![
-                Span::styled("▌", Style::default().fg(color)),
+                Span::styled("▌", style),
                 Span::raw(" "),
                 Span::styled(
-                    label.to_string(),
-                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                    if entry.kind == "tool:error" {
+                        "tool err"
+                    } else {
+                        "tool"
+                    }
+                    .to_string(),
+                    style.add_modifier(Modifier::BOLD),
                 ),
             ];
             if can_toggle {
                 title_spans.push(Span::raw("  "));
                 title_spans.push(Span::styled(
                     if expanded { "[收起]" } else { "[展开]" },
-                    Style::default()
-                        .fg(Color::LightCyan)
-                        .add_modifier(Modifier::BOLD),
+                    theme.expandable_style(),
                 ));
                 if !expanded {
                     title_spans.push(Span::raw(format!("  ({} more lines)", hidden)));

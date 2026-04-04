@@ -1,11 +1,17 @@
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::state::{ScreenState, TuiAppArgs};
+use crate::theme::theme;
 
 pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<Line<'static>> {
+    let theme = theme();
+    let tools_count = args.tools.list().len();
     let skills_count = args.tools.get_skills().len();
     let mcp_count = args.tools.get_mcp_servers().len();
+    let running_tasks = minicode_background_tasks::list_background_tasks()
+        .into_iter()
+        .filter(|task| task.status == "running")
+        .count();
     let model = args
         .runtime
         .as_ref()
@@ -48,65 +54,37 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
 
     vec![
         Line::from(vec![
-            Span::styled(
-                "project",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("project", theme.header_label_project_style()),
             Span::raw(" "),
             Span::raw(args.cwd.display().to_string()),
             Span::raw("   "),
-            Span::styled(
-                "provider",
-                Style::default()
-                    .fg(Color::LightBlue)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("provider", theme.header_label_provider_style()),
             Span::raw(" "),
             Span::raw(provider),
             Span::raw("   "),
-            Span::styled(
-                "model",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("model", theme.header_label_model_style()),
             Span::raw(" "),
             Span::raw(model),
             Span::raw("   "),
-            Span::styled(
-                "auth",
-                Style::default()
-                    .fg(Color::LightYellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("auth", theme.header_label_auth_style()),
             Span::raw(" "),
             Span::raw(auth),
         ]),
         Line::from(vec![
-            Span::styled(
-                "session",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("session", theme.header_label_session_style()),
             Span::raw(format!(
-                " messages={} events={} skills={} mcp={}",
+                " messages={} events={} tools={} skills={} mcp={} running={}",
                 state.message_count,
                 state.transcript.len(),
+                tools_count,
                 skills_count,
-                mcp_count
+                mcp_count,
+                running_tasks,
             )),
             Span::raw(" | local"),
         ]),
         Line::from(vec![
-            Span::styled(
-                "permissions",
-                Style::default()
-                    .fg(Color::LightMagenta)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("permissions", theme.header_label_permissions_style()),
             Span::raw(" "),
             Span::raw(args.permissions.get_summary().join(" | ")),
             if recent.is_empty() {

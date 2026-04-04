@@ -10,6 +10,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, List, ListState, Parag
 
 use crate::input::{display_width, get_visible_commands};
 use crate::state::{ScreenState, TuiAppArgs};
+use crate::theme::theme;
 
 mod approval;
 mod header;
@@ -26,6 +27,7 @@ pub(crate) fn render_screen(
     args: &TuiAppArgs,
     state: &mut ScreenState,
 ) -> Result<()> {
+    let theme = theme();
     let visible_commands = get_visible_commands(&state.input);
     let command_rows = if visible_commands.is_empty() {
         0u16
@@ -35,7 +37,7 @@ pub(crate) fn render_screen(
 
     terminal.draw(|frame| {
         let area = frame.area();
-        let input_height = if command_rows > 0 { 10 } else { 4 };
+        let input_height = if command_rows > 0 { 7 } else { 3 };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -51,7 +53,7 @@ pub(crate) fn render_screen(
                     .title(" Workspace ")
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .style(Style::default().fg(Color::LightCyan)),
+                    .style(theme.header_style()),
             )
             .wrap(Wrap { trim: true });
         frame.render_widget(header, chunks[0]);
@@ -82,16 +84,31 @@ pub(crate) fn render_screen(
         } else {
             session_render.lines
         };
+        let scroll_title = if state.transcript_scroll_offset > 0 {
+            format!(" Session (scroll: {}) ", state.transcript_scroll_offset)
+        } else {
+            " Session ".to_string()
+        };
         let feed = Paragraph::new(feed_lines)
             .block(
                 Block::default()
-                    .title(" Session ")
+                    .title(scroll_title)
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
-                    .style(Style::default().fg(Color::Blue)),
+                    .style(theme.session_style()),
             )
             .scroll((scroll_from_top as u16, 0));
         frame.render_widget(feed, chunks[1]);
+
+        let status_text = state.status.clone().unwrap_or_else(|| "Ready".to_string());
+
+        let mut status_info = String::from("status: ");
+        status_info.push_str(&status_text);
+
+        if let Some(active_tool) = &state.active_tool {
+            status_info.push_str(" | active=");
+            status_info.push_str(active_tool);
+        }
 
         let prompt_input = sanitize_line(&state.input);
         let input_box = chunks[2];
@@ -102,65 +119,40 @@ pub(crate) fn render_screen(
             available_input_width.max(1),
         );
 
-        let prompt_text = vec![
-            Line::from(format!(
-                "status: {}{}{}{}{}",
-                state.status.clone().unwrap_or_else(|| "Ready".to_string()),
-                state
-                    .active_tool
-                    .as_ref()
-                    .map(|x| format!(" | active={}", x))
-                    .unwrap_or_default(),
-                if state.is_busy {
-                    " | busy".to_string()
-                } else {
-                    String::new()
-                },
-                if state.transcript_scroll_offset > 0 {
-                    format!(" | scroll={}", state.transcript_scroll_offset)
-                } else {
-                    String::new()
-                },
-                {
-                    let running_shells = minicode_background_tasks::list_background_tasks()
-                        .into_iter()
-                        .filter(|task| task.status == "running")
-                        .count();
-                    format!(" | tools=on | skills=on | shells={}", running_shells)
-                }
-            ))
-            .style(
+        let prompt_text = vec![Line::from(vec![
+            Span::styled(
+                "mini-code> ",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme.input)
                     .add_modifier(Modifier::BOLD),
             ),
-            Line::from(vec![
-                Span::styled(
-                    "mini-code> ",
-                    Style::default()
-                        .fg(Color::Green)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(display_input),
-            ]),
-        ];
+            Span::raw(display_input),
+        ])];
+
+        // Build block with status on the right
+        let mut block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .style(theme.input_style());
+
+        // Create title string with left-aligned "Input"
+        let input_title = " Input ";
+        block = block.title(input_title);
+
+        // Create right-aligned status title
+        let status_title = format!(" {} ", status_info);
+        block = block.title(status_title);
         let prompt = Paragraph::new(prompt_text)
-            .block(
-                Block::default()
-                    .title(" Input ")
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .style(Style::default().fg(Color::Green)),
-            )
+            .block(block)
             .wrap(Wrap { trim: false });
         frame.render_widget(prompt, input_box);
 
         if command_rows > 0 {
             let command_area = Rect {
                 x: input_box.x + 1,
-                y: input_box.y + 3,
+                y: input_box.y + input_box.height,
                 width: input_box.width.saturating_sub(2),
-                height: input_box.height.saturating_sub(4),
+                height: command_rows.saturating_sub(1),
             };
             let items = visible_commands
                 .iter()
@@ -188,7 +180,7 @@ pub(crate) fn render_screen(
             let commands = List::new(items)
                 .highlight_style(
                     Style::default()
-                        .bg(Color::Rgb(30, 50, 80))
+                        .bg(theme.command_highlight)
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD),
                 )
@@ -200,8 +192,7 @@ pub(crate) fn render_screen(
         let prefix_width = display_width("mini-code> ") as u16;
         let cursor_x = (prompt_area.x + 1 + prefix_width + cursor_dx as u16)
             .min(prompt_area.x + prompt_area.width.saturating_sub(2));
-        let cursor_y =
-            (prompt_area.y + 2).min(prompt_area.y + prompt_area.height.saturating_sub(1));
+        let cursor_y = prompt_area.y + 1;
 
         if let Some(pending) = &state.pending_approval {
             let popup = centered_rect(70, 45, area);
@@ -213,7 +204,7 @@ pub(crate) fn render_screen(
                         .title(" Approval Required ")
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
-                        .style(Style::default().fg(Color::LightRed)),
+                        .style(theme.approval_style()),
                 )
                 .wrap(Wrap { trim: true });
             frame.render_widget(dialog, popup);

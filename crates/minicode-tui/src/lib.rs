@@ -17,6 +17,7 @@ use ratatui::backend::CrosstermBackend;
 mod input;
 mod render;
 mod state;
+mod theme;
 mod turn;
 
 use input::{
