@@ -1,0 +1,25 @@
+[package]
+name = "minicode-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = "1"
+crossterm = "0.29"
+minicode-agent-core = { path = "../minicode-agent-core" }
+minicode-background-tasks = { path = "../minicode-background-tasks" }
+minicode-cli-commands = { path = "../minicode-cli-commands" }
+minicode-core = { path = "../minicode-core" }
+minicode-permissions = { path = "../minicode-permissions" }
+minicode-shortcuts = { path = "../minicode-shortcuts" }
+minicode-tool = { path = "../minicode-tool" }
+ratatui = "0.29"
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "time"] }
+unicode-width = "0.1"
+
+[lints]
+workspace = true

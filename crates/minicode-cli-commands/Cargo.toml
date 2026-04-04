@@ -1,0 +1,15 @@
+[package]
+name = "minicode-cli-commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = "1"
+minicode-core = { path = "../minicode-core" }
+minicode-tool = { path = "../minicode-tool" }
+
+[lints]
+workspace = true

@@ -1,15 +1,10 @@
-mod agent_loop;
-mod anthropic_adapter;
-mod background_tasks;
-mod cli_commands;
-mod install;
-mod local_tool_shortcuts;
-mod manage_cli;
-mod mock_model;
-mod permissions;
-mod tool;
-mod tools;
-mod tui;
+pub use minicode_agent_core::*;
+pub use minicode_install::*;
+pub use minicode_manage::*;
+pub use minicode_mock_model::*;
+pub use minicode_permissions::*;
+pub use minicode_tools_runtime::*;
+pub use minicode_tui::*;
 
 use std::io::IsTerminal;
 use std::sync::Arc;
@@ -17,13 +12,6 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use minicode_core::config::load_runtime_config;
 use minicode_core::types::ModelAdapter;
-
-use anthropic_adapter::AnthropicModelAdapter;
-use manage_cli::maybe_handle_management_command;
-use mock_model::MockModelAdapter;
-use permissions::PermissionManager;
-use tools::create_default_tool_registry;
-use tui::{TuiAppArgs, run_tui_app};
 
 fn is_interactive_terminal() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
@@ -47,7 +35,7 @@ async fn real_main() -> Result<()> {
     let argv = std::env::args().skip(1).collect::<Vec<_>>();
 
     if argv.first().map(|x| x.as_str()) == Some("install") {
-        install::run_install_wizard(&cwd)?;
+        run_install_wizard(&cwd)?;
         return Ok(());
     }
 

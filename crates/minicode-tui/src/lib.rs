@@ -13,10 +13,21 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use minicode_agent_core::{AgentTurnCallbacks, run_agent_turn};
+use minicode_background_tasks::list_background_tasks;
+use minicode_cli_commands::{
+    SLASH_COMMANDS, SlashCommand, find_matching_slash_commands, try_handle_local_command,
+};
 use minicode_core::config::RuntimeConfig;
 use minicode_core::history::{load_history_entries, save_history_entries};
 use minicode_core::prompt::build_system_prompt;
 use minicode_core::types::{ChatMessage, ModelAdapter};
+use minicode_permissions::{
+    PermissionDecision, PermissionManager, PermissionPromptHandler, PermissionPromptKind,
+    PermissionPromptRequest, PermissionPromptResult,
+};
+use minicode_shortcuts::parse_local_tool_shortcut;
+use minicode_tool::{ToolContext, ToolRegistry, ToolResult};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -27,16 +38,6 @@ use ratatui::widgets::{
 };
 use tokio::sync::{mpsc, oneshot};
 use unicode_width::UnicodeWidthStr;
-
-use crate::agent_loop::{AgentTurnCallbacks, run_agent_turn};
-use crate::background_tasks::list_background_tasks;
-use crate::cli_commands::{SLASH_COMMANDS, find_matching_slash_commands, try_handle_local_command};
-use crate::local_tool_shortcuts::parse_local_tool_shortcut;
-use crate::permissions::{
-    PermissionDecision, PermissionManager, PermissionPromptHandler, PermissionPromptKind,
-    PermissionPromptRequest, PermissionPromptResult,
-};
-use crate::tool::{ToolContext, ToolRegistry};
 
 struct TerminalGuard;
 
@@ -92,7 +93,7 @@ enum TurnEvent {
         responder: oneshot::Sender<PermissionPromptResult>,
     },
     Done(Vec<ChatMessage>),
-    ToolDone(crate::tool::ToolResult),
+    ToolDone(ToolResult),
 }
 
 #[derive(Default)]
@@ -203,7 +204,7 @@ fn remove_char_at(value: &mut String, char_offset: usize) -> bool {
     true
 }
 
-fn get_visible_commands(input: &str) -> Vec<&'static crate::cli_commands::SlashCommand> {
+fn get_visible_commands(input: &str) -> Vec<&'static SlashCommand> {
     if !input.starts_with('/') {
         return vec![];
     }

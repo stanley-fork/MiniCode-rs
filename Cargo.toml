@@ -16,6 +16,8 @@ members = [
     "crates/minicode-tool",
     "crates/minicode-types",
     "crates/minicode-tools-runtime",
+    "crates/minicode-cli-commands",
+    "crates/minicode-tui",
     "crates/minicode-workspace",
 ]
 resolver = "2"
