@@ -137,7 +137,7 @@ impl std::fmt::Debug for PermissionManager {
 
 impl PermissionManager {
     /// 从持久化存储加载权限配置并初始化管理器。
-    pub fn new(workspace_root: PathBuf) -> Result<Self> {
+    pub fn new(workspace_root: &PathBuf) -> Result<Self> {
         let ctx = get_active_session_context()
             .ok_or_else(|| anyhow!("Active session context is not initialized"))?;
         let store_path = project_session_permissions_path(&ctx.cwd, &ctx.session_id);
@@ -160,7 +160,7 @@ impl PermissionManager {
             turn_allow_all_edits: false,
         };
         Ok(Self {
-            workspace_root,
+            workspace_root: workspace_root.clone(),
             store_path,
             state: Arc::new(Mutex::new(state)),
             prompt_handler: Arc::new(Mutex::new(None)),
