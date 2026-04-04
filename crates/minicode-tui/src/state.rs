@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -48,6 +49,9 @@ pub(crate) struct ScreenState {
     pub(crate) cursor_offset: usize,
     pub(crate) transcript: Vec<TranscriptEntry>,
     pub(crate) transcript_scroll_offset: usize,
+    pub(crate) session_max_scroll_offset: usize,
+    pub(crate) expanded_tool_entries: HashSet<usize>,
+    pub(crate) visible_tool_toggle_rows: Vec<(u16, usize)>,
     pub(crate) selected_slash_index: usize,
     pub(crate) status: Option<String>,
     pub(crate) active_tool: Option<String>,

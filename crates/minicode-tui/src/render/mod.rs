@@ -24,7 +24,7 @@ use ui_utils::{centered_rect, input_viewport, sanitize_line};
 pub(crate) fn render_screen(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     args: &TuiAppArgs,
-    state: &ScreenState,
+    state: &mut ScreenState,
 ) -> Result<()> {
     let visible_commands = get_visible_commands(&state.input);
     let command_rows = if visible_commands.is_empty() {
@@ -56,29 +56,41 @@ pub(crate) fn render_screen(
             .wrap(Wrap { trim: true });
         frame.render_widget(header, chunks[0]);
 
-        let feed_lines = session_lines(state);
-        let feed_line_count = feed_lines.len();
+        state.visible_tool_toggle_rows.clear();
+        let session_render = session_lines(state);
+        let feed_line_count = session_render.lines.len();
         let feed_viewport_height = chunks[1].height.saturating_sub(2) as usize;
         let max_scroll = feed_line_count.saturating_sub(feed_viewport_height);
-        let scroll_from_bottom = state.transcript_scroll_offset.min(max_scroll);
+        state.session_max_scroll_offset = max_scroll;
+        state.transcript_scroll_offset = state.transcript_scroll_offset.min(max_scroll);
+        let scroll_from_bottom = state.transcript_scroll_offset;
         let scroll_from_top = max_scroll.saturating_sub(scroll_from_bottom);
+        for (line_idx, entry_idx) in &session_render.toggle_targets {
+            if *line_idx >= scroll_from_top && *line_idx < scroll_from_top + feed_viewport_height {
+                let row = (*line_idx - scroll_from_top) as u16;
+                let screen_y = chunks[1].y + 1 + row;
+                if screen_y < chunks[1].y + chunks[1].height.saturating_sub(1) {
+                    state.visible_tool_toggle_rows.push((screen_y, *entry_idx));
+                }
+            }
+        }
         let fallback = vec![Line::from(
             "(no messages yet, enter /help to list commands)",
         )];
-        let feed = Paragraph::new(if feed_lines.is_empty() {
+        let feed_lines = if session_render.lines.is_empty() {
             fallback
         } else {
-            feed_lines
-        })
-        .block(
-            Block::default()
-                .title(" Session ")
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .style(Style::default().fg(Color::Blue)),
-        )
-        .wrap(Wrap { trim: false })
-        .scroll((scroll_from_top as u16, 0));
+            session_render.lines
+        };
+        let feed = Paragraph::new(feed_lines)
+            .block(
+                Block::default()
+                    .title(" Session ")
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .style(Style::default().fg(Color::Blue)),
+            )
+            .scroll((scroll_from_top as u16, 0));
         frame.render_widget(feed, chunks[1]);
 
         let prompt_input = sanitize_line(&state.input);
@@ -132,7 +144,7 @@ pub(crate) fn render_screen(
                 Span::raw(display_input),
             ]),
             Line::from(Span::styled(
-                "Enter submit | Tab complete | PgUp/PgDn scroll | Ctrl+C exit",
+                "Enter submit | Click [展开]/[收起] | PgUp/PgDn scroll | Ctrl+C exit",
                 Style::default().fg(Color::DarkGray),
             )),
         ];

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::cursor::Show;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -20,8 +20,8 @@ mod state;
 mod turn;
 
 use input::{
-    char_len, get_transcript_max_scroll_offset, get_visible_commands, history_down, history_up,
-    insert_char_at, remove_char_at, remove_char_before, scroll_transcript_by,
+    char_len, get_visible_commands, history_down, history_up, insert_char_at, remove_char_at,
+    remove_char_before, scroll_transcript_by, toggle_tool_details,
 };
 use render::render_screen;
 pub use state::TuiAppArgs;
@@ -76,7 +76,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
 
     let mut should_exit = false;
     while !should_exit {
-        render_screen(&mut terminal, &args, &state)?;
+        render_screen(&mut terminal, &args, &mut state)?;
 
         if event::poll(Duration::from_millis(150))? {
             match event::read()? {
@@ -86,6 +86,16 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                     }
                     MouseEventKind::ScrollDown => {
                         let _ = scroll_transcript_by(&mut state, -3);
+                    }
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        if let Some((_, entry_index)) = state
+                            .visible_tool_toggle_rows
+                            .iter()
+                            .find(|(y, _)| *y == mouse.row)
+                            .copied()
+                        {
+                            let _ = toggle_tool_details(&mut state, entry_index);
+                        }
                     }
                     _ => {}
                 },
@@ -258,8 +268,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             ..
                         } if modifiers.contains(KeyModifiers::CONTROL) => {
                             if state.input.is_empty() {
-                                state.transcript_scroll_offset =
-                                    get_transcript_max_scroll_offset(&state.transcript);
+                                state.transcript_scroll_offset = state.session_max_scroll_offset;
                             } else {
                                 state.cursor_offset = 0;
                             }

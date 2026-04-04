@@ -1,7 +1,7 @@
 use minicode_cli_commands::{SLASH_COMMANDS, SlashCommand, find_matching_slash_commands};
 use unicode_width::UnicodeWidthStr;
 
-use crate::state::{ScreenState, TranscriptEntry};
+use crate::state::ScreenState;
 
 pub(crate) fn char_len(value: &str) -> usize {
     value.chars().count()
@@ -87,28 +87,22 @@ pub(crate) fn history_down(state: &mut ScreenState) -> bool {
     true
 }
 
-fn get_transcript_window_size() -> usize {
-    let (_, rows) = crossterm::terminal::size().unwrap_or((120, 40));
-    rows.saturating_sub(14).max(8) as usize
-}
-
-pub(crate) fn get_transcript_max_scroll_offset(entries: &[TranscriptEntry]) -> usize {
-    if entries.is_empty() {
-        return 0;
-    }
-    let line_count = entries
-        .iter()
-        .map(|e| 2 + e.body.lines().count())
-        .sum::<usize>();
-    line_count.saturating_sub(get_transcript_window_size())
-}
-
 pub(crate) fn scroll_transcript_by(state: &mut ScreenState, delta: isize) -> bool {
-    let max = get_transcript_max_scroll_offset(&state.transcript) as isize;
+    let max = state.session_max_scroll_offset as isize;
     let next = (state.transcript_scroll_offset as isize + delta).clamp(0, max) as usize;
     if next == state.transcript_scroll_offset {
         return false;
     }
     state.transcript_scroll_offset = next;
+    true
+}
+
+pub(crate) fn toggle_tool_details(state: &mut ScreenState, index: usize) -> bool {
+    if index >= state.transcript.len() {
+        return false;
+    }
+    if !state.expanded_tool_entries.insert(index) {
+        state.expanded_tool_entries.remove(&index);
+    }
     true
 }

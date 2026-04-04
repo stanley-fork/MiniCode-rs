@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
 use minicode_agent_core::run_agent_turn;
 use minicode_cli_commands::{find_matching_slash_commands, try_handle_local_command};
 use minicode_core::history::save_history_entries;
@@ -16,6 +16,7 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::input::{scroll_transcript_by, toggle_tool_details};
 use crate::render::render_screen;
 use crate::state::{
     ChannelCallbacks, PendingApproval, ScreenState, TranscriptEntry, TuiAppArgs, TurnEvent,
@@ -121,6 +122,80 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
             None
         }
         TurnEvent::Done(updated) => Some(updated),
+    }
+}
+
+fn handle_busy_event(state: &mut ScreenState, event: Event) {
+    match event {
+        Event::Mouse(mouse) => match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                let _ = scroll_transcript_by(state, 3);
+            }
+            MouseEventKind::ScrollDown => {
+                let _ = scroll_transcript_by(state, -3);
+            }
+            MouseEventKind::Down(MouseButton::Left) => {
+                if let Some((_, entry_index)) = state
+                    .visible_tool_toggle_rows
+                    .iter()
+                    .find(|(y, _)| *y == mouse.row)
+                    .copied()
+                {
+                    let _ = toggle_tool_details(state, entry_index);
+                }
+            }
+            _ => {}
+        },
+        Event::Key(key) => {
+            if state.pending_approval.is_some() && handle_approval_key(state, key) {
+                return;
+            }
+
+            match key {
+                KeyEvent {
+                    code: KeyCode::PageUp,
+                    ..
+                } => {
+                    let _ = scroll_transcript_by(state, 8);
+                }
+                KeyEvent {
+                    code: KeyCode::PageDown,
+                    ..
+                } => {
+                    let _ = scroll_transcript_by(state, -8);
+                }
+                KeyEvent {
+                    code: KeyCode::Up,
+                    modifiers,
+                    ..
+                } if modifiers.contains(KeyModifiers::ALT) => {
+                    let _ = scroll_transcript_by(state, 1);
+                }
+                KeyEvent {
+                    code: KeyCode::Down,
+                    modifiers,
+                    ..
+                } if modifiers.contains(KeyModifiers::ALT) => {
+                    let _ = scroll_transcript_by(state, -1);
+                }
+                KeyEvent {
+                    code: KeyCode::Char('a'),
+                    modifiers,
+                    ..
+                } if modifiers.contains(KeyModifiers::CONTROL) => {
+                    state.transcript_scroll_offset = state.session_max_scroll_offset;
+                }
+                KeyEvent {
+                    code: KeyCode::Char('e'),
+                    modifiers,
+                    ..
+                } if modifiers.contains(KeyModifiers::CONTROL) => {
+                    state.transcript_scroll_offset = 0;
+                }
+                _ => {}
+            }
+        }
+        _ => {}
     }
 }
 
@@ -341,11 +416,9 @@ pub(crate) async fn handle_submit(
                 }
             }
             render_screen(terminal, args, state)?;
-            if event::poll(Duration::from_millis(60))?
-                && let Event::Key(key) = event::read()?
-                && state.pending_approval.is_some()
-            {
-                let _ = handle_approval_key(state, key);
+            if event::poll(Duration::from_millis(60))? {
+                let input_event = event::read()?;
+                handle_busy_event(state, input_event);
             }
         }
         return Ok(false);
@@ -420,12 +493,9 @@ pub(crate) async fn handle_submit(
 
         render_screen(terminal, args, state)?;
 
-        if done_messages.is_none()
-            && event::poll(Duration::from_millis(60))?
-            && let Event::Key(key) = event::read()?
-            && state.pending_approval.is_some()
-        {
-            let _ = handle_approval_key(state, key);
+        if done_messages.is_none() && event::poll(Duration::from_millis(60))? {
+            let input_event = event::read()?;
+            handle_busy_event(state, input_event);
         }
     }
 

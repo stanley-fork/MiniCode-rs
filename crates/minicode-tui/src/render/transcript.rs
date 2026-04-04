@@ -1,10 +1,31 @@
-use minicode_background_tasks::list_background_tasks;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::state::{ScreenState, TranscriptEntry};
 
 use super::ui_utils::sanitize_line;
+
+const TOOL_PREVIEW_LINES: usize = 6;
+const TOOL_PREVIEW_CHARS: usize = 180;
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let mut out = String::new();
+    for (idx, ch) in value.chars().enumerate() {
+        if idx >= max_chars.saturating_sub(1) {
+            break;
+        }
+        out.push(ch);
+    }
+    out.push('…');
+    out
+}
+
+fn is_tool_entry(entry: &TranscriptEntry) -> bool {
+    entry.kind == "tool" || entry.kind == "tool:error"
+}
 
 fn transcript_title_line(kind: &str) -> Line<'static> {
     let (label, color) = match kind {
@@ -25,105 +46,100 @@ fn transcript_title_line(kind: &str) -> Line<'static> {
     ])
 }
 
-pub(super) fn transcript_lines(entries: &[TranscriptEntry]) -> Vec<Line<'static>> {
+pub(super) struct SessionRender {
+    pub(super) lines: Vec<Line<'static>>,
+    pub(super) toggle_targets: Vec<(usize, usize)>,
+}
+
+pub(super) fn transcript_lines(state: &ScreenState) -> SessionRender {
     let mut lines = Vec::new();
-    for (idx, entry) in entries.iter().enumerate() {
+    let mut toggle_targets = Vec::new();
+    for (idx, entry) in state.transcript.iter().enumerate() {
         if idx > 0 {
             lines.push(Line::from(""));
         }
-        lines.push(transcript_title_line(&entry.kind));
-        for line in entry.body.lines() {
-            lines.push(Line::from(format!("  {}", sanitize_line(line))));
-        }
-    }
-    lines
-}
 
-pub(super) fn session_lines(state: &ScreenState) -> Vec<Line<'static>> {
-    let mut lines = transcript_lines(&state.transcript);
-    let has_transcript = !lines.is_empty();
-
-    if has_transcript {
-        lines.push(Line::from(""));
-    }
-
-    lines.push(Line::from(vec![
-        Span::styled(
-            "▌",
-            Style::default()
-                .fg(Color::LightMagenta)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(" "),
-        Span::styled(
-            "activity",
-            Style::default()
-                .fg(Color::LightMagenta)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]));
-
-    if let Some(tool) = &state.active_tool {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                "running",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::raw(tool.clone()),
-        ]));
-    }
-
-    if state.recent_tools.is_empty() {
-        lines.push(Line::from("  recent none"));
-    } else {
-        for (name, ok) in state.recent_tools.iter().rev().take(6) {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    if *ok { "ok" } else { "err" },
-                    Style::default()
-                        .fg(if *ok { Color::Green } else { Color::Red })
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" "),
-                Span::raw(name.clone()),
-            ]));
-        }
-    }
-
-    let tasks = list_background_tasks();
-    if !tasks.is_empty() {
-        lines.push(Line::from("  "));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled(
-                "background",
-                Style::default()
-                    .fg(Color::LightCyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
-        for task in tasks.iter().rev().take(4) {
-            let color = match task.status.as_str() {
-                "running" => Color::Yellow,
-                "completed" => Color::Green,
-                _ => Color::Red,
+        if is_tool_entry(entry) {
+            let expanded = state.expanded_tool_entries.contains(&idx);
+            let body_lines = entry.body.lines().collect::<Vec<_>>();
+            let total = body_lines.len();
+            let mut truncated = false;
+            let collapsed_preview_len = total.min(TOOL_PREVIEW_LINES);
+            let collapsible_by_lines = total > collapsed_preview_len;
+            let mut collapsible_by_chars = false;
+            if !collapsible_by_lines {
+                for line in body_lines.iter().take(collapsed_preview_len) {
+                    if sanitize_line(line).chars().count() > TOOL_PREVIEW_CHARS {
+                        collapsible_by_chars = true;
+                        break;
+                    }
+                }
+            }
+            let can_toggle = collapsible_by_lines || collapsible_by_chars;
+            let preview_len = if expanded {
+                total
+            } else {
+                total.min(TOOL_PREVIEW_LINES)
             };
-            lines.push(Line::from(vec![
-                Span::raw("  "),
+            let hidden = total.saturating_sub(preview_len);
+            let (label, color) = if entry.kind == "tool:error" {
+                ("tool err", Color::Red)
+            } else {
+                ("tool", Color::Magenta)
+            };
+            let title_line_idx = lines.len();
+            let mut title_spans = vec![
+                Span::styled("▌", Style::default().fg(color)),
+                Span::raw(" "),
                 Span::styled(
-                    task.status.clone(),
+                    label.to_string(),
                     Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(" "),
-                Span::raw(format!("pid={} {}", task.pid, task.command)),
-            ]));
+            ];
+            if can_toggle {
+                title_spans.push(Span::raw("  "));
+                title_spans.push(Span::styled(
+                    if expanded { "[收起]" } else { "[展开]" },
+                    Style::default()
+                        .fg(Color::LightCyan)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                if !expanded {
+                    title_spans.push(Span::raw(format!("  ({} more lines)", hidden)));
+                }
+                toggle_targets.push((title_line_idx, idx));
+            }
+            lines.push(Line::from(title_spans));
+
+            for line in body_lines.iter().take(preview_len) {
+                let sanitized = sanitize_line(line);
+                let display = if expanded {
+                    sanitized
+                } else {
+                    let clipped = truncate_chars(&sanitized, TOOL_PREVIEW_CHARS);
+                    if clipped != sanitized {
+                        truncated = true;
+                    }
+                    clipped
+                };
+                lines.push(Line::from(format!("  {}", display)));
+            }
+            if !expanded && hidden == 0 && truncated {
+                lines.push(Line::from("  ..."));
+            }
+        } else {
+            lines.push(transcript_title_line(&entry.kind));
+            for line in entry.body.lines() {
+                lines.push(Line::from(format!("  {}", sanitize_line(line))));
+            }
         }
     }
+    SessionRender {
+        lines,
+        toggle_targets,
+    }
+}
 
-    lines
+pub(super) fn session_lines(state: &ScreenState) -> SessionRender {
+    transcript_lines(state)
 }
