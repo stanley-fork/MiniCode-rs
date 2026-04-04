@@ -85,6 +85,7 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
     },
 ];
 
+/// 格式化所有内置斜杠命令的帮助文本。
 pub fn format_slash_commands() -> String {
     SLASH_COMMANDS
         .iter()
@@ -93,6 +94,7 @@ pub fn format_slash_commands() -> String {
         .join("\n")
 }
 
+/// 根据输入前缀返回可匹配的斜杠命令。
 pub fn find_matching_slash_commands(input: &str) -> Vec<String> {
     SLASH_COMMANDS
         .iter()
@@ -101,6 +103,7 @@ pub fn find_matching_slash_commands(input: &str) -> Vec<String> {
         .collect()
 }
 
+/// 尝试处理本地斜杠命令，无法处理时返回 `None`。
 pub async fn try_handle_local_command(
     input: &str,
     cwd: &std::path::Path,

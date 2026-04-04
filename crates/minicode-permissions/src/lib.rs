@@ -101,6 +101,7 @@ pub struct PermissionManager {
 }
 
 impl std::fmt::Debug for PermissionManager {
+    /// 自定义 Debug 输出，避免泄露共享状态细节。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PermissionManager")
             .field("workspace_root", &self.workspace_root)
@@ -118,6 +119,7 @@ impl std::fmt::Debug for PermissionManager {
 }
 
 impl PermissionManager {
+    /// 从持久化存储加载权限配置并初始化管理器。
     pub fn new(workspace_root: PathBuf) -> Result<Self> {
         let store = read_store()?;
 
@@ -144,12 +146,14 @@ impl PermissionManager {
         })
     }
 
+    /// 注册用于 UI 审批流程的异步回调。
     pub fn set_prompt_handler(&self, handler: PermissionPromptHandler) {
         if let Ok(mut slot) = self.prompt_handler.lock() {
             *slot = Some(handler);
         }
     }
 
+    /// 优先走 UI 回调审批，回退到终端确认。
     async fn prompt_or_confirm(
         &self,
         request: PermissionPromptRequest,
@@ -173,6 +177,7 @@ impl PermissionManager {
         })
     }
 
+    /// 开始新回合并重置回合级编辑权限。
     pub fn begin_turn(&mut self) {
         if let Ok(mut state) = self.state.lock() {
             state.turn_allowed_edits.clear();
@@ -180,6 +185,7 @@ impl PermissionManager {
         }
     }
 
+    /// 结束回合并清理回合级状态。
     pub fn end_turn(&mut self) {
         if let Ok(mut state) = self.state.lock() {
             state.turn_allowed_edits.clear();
@@ -187,6 +193,7 @@ impl PermissionManager {
         }
     }
 
+    /// 返回权限状态的简要摘要文本。
     pub fn get_summary(&self) -> Vec<String> {
         let state = self.state.lock().ok();
         let mut summary = vec![format!("cwd: {}", self.workspace_root.display())];
@@ -231,6 +238,7 @@ impl PermissionManager {
         summary
     }
 
+    /// 校验路径访问权限，必要时触发审批。
     pub async fn ensure_path_access(&self, target_path: &str, _intent: &str) -> Result<()> {
         let normalized = Path::new(target_path)
             .canonicalize()
@@ -350,6 +358,7 @@ impl PermissionManager {
         }
     }
 
+    /// 校验命令执行权限，危险或未知命令需要审批。
     pub async fn ensure_command(
         &self,
         command: &str,
@@ -464,6 +473,7 @@ impl PermissionManager {
         }
     }
 
+    /// 校验文件编辑权限并支持用户反馈拒绝。
     pub async fn ensure_edit(&self, target_path: &str, diff_preview: &str) -> Result<()> {
         let normalized_target = Path::new(target_path)
             .canonicalize()
@@ -598,6 +608,7 @@ impl PermissionManager {
         }
     }
 
+    /// 将可持久化权限规则写回磁盘。
     pub fn persist(&self) -> Result<()> {
         let path = mini_code_permissions_path();
         if let Some(parent) = path.parent() {
@@ -621,6 +632,7 @@ impl PermissionManager {
 }
 
 impl PermissionManager {
+    /// 终端回退确认：仅在 TTY 模式下读取用户输入。
     fn confirm(prompt: &str) -> Result<bool> {
         let is_tty_in = io::stdin().is_terminal();
         let is_tty_out = io::stdout().is_terminal();
@@ -640,6 +652,7 @@ impl PermissionManager {
     }
 }
 
+/// 判断目标路径是否位于指定根目录内。
 fn is_within_directory(root: &Path, target: &Path) -> bool {
     let Ok(relative) = target.strip_prefix(root) else {
         return false;
@@ -649,6 +662,7 @@ fn is_within_directory(root: &Path, target: &Path) -> bool {
         .any(|c| matches!(c, std::path::Component::ParentDir))
 }
 
+/// 从磁盘读取权限存储，不存在时返回默认值。
 fn read_store() -> Result<PermissionStore> {
     let path = mini_code_permissions_path();
     match fs::read_to_string(path) {
@@ -658,6 +672,7 @@ fn read_store() -> Result<PermissionStore> {
     }
 }
 
+/// 识别高风险命令并给出触发审批的原因。
 fn classify_dangerous_command(command: &str, args: &[String]) -> Option<String> {
     let signature = format!("{} {}", command, args.join(" ")).trim().to_string();
     if command == "git" {
@@ -705,6 +720,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// 验证 `git reset --hard` 被识别为危险命令。
     fn test_classify_dangerous_command_git_reset() {
         let args = vec!["reset".to_string(), "--hard".to_string()];
         let result = classify_dangerous_command("git", &args);
@@ -713,6 +729,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证 `git checkout --` 被识别为危险命令。
     fn test_classify_dangerous_command_git_checkout() {
         let args = vec![
             "checkout".to_string(),
@@ -725,6 +742,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证 `git restore --source` 被识别为危险命令。
     fn test_classify_dangerous_command_git_restore_source() {
         let args = vec![
             "restore".to_string(),
@@ -737,6 +755,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证 `npm publish` 被识别为危险命令。
     fn test_classify_dangerous_command_npm_publish() {
         let args = vec!["publish".to_string()];
         let result = classify_dangerous_command("npm", &args);
@@ -745,6 +764,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证解释器执行命令会触发危险判定。
     fn test_classify_dangerous_command_node_execution() {
         let args = vec!["script.js".to_string()];
         let result = classify_dangerous_command("node", &args);
@@ -753,6 +773,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证常规安全命令不会被误判。
     fn test_classify_safe_command() {
         let args = vec!["status".to_string()];
         let result = classify_dangerous_command("git", &args);
@@ -760,6 +781,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证 `ls` 命令不会触发危险判定。
     fn test_classify_ls_safe() {
         let args = vec!["-la".to_string(), "/tmp".to_string()];
         let result = classify_dangerous_command("ls", &args);
@@ -767,6 +789,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证目录内路径判定为 true。
     fn test_is_within_directory_valid() {
         use std::path::PathBuf;
         let root = PathBuf::from("/home/user/project");
@@ -775,6 +798,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证目录外路径判定为 false。
     fn test_is_within_directory_outside() {
         use std::path::PathBuf;
         let root = PathBuf::from("/home/user/project");
@@ -783,6 +807,7 @@ mod tests {
     }
 
     #[test]
+    /// 验证包含父目录跳转时不会误放行。
     fn test_is_within_directory_parent_escape() {
         use std::path::PathBuf;
         let root = PathBuf::from("/home/user/project");

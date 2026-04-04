@@ -72,5 +72,6 @@ pub enum AgentStep {
 
 #[async_trait]
 pub trait ModelAdapter: Send + Sync {
+    /// 基于当前对话消息生成下一步代理动作。
     async fn next(&self, messages: &[ChatMessage]) -> anyhow::Result<AgentStep>;
 }

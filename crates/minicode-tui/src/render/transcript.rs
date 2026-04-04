@@ -8,6 +8,7 @@ use super::ui_utils::sanitize_line;
 const TOOL_PREVIEW_LINES: usize = 6;
 const TOOL_PREVIEW_CHARS: usize = 180;
 
+/// 按字符数截断字符串并在末尾追加省略符。
 fn truncate_chars(value: &str, max_chars: usize) -> String {
     if value.chars().count() <= max_chars {
         return value.to_string();
@@ -23,10 +24,12 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
     out
 }
 
+/// 判断该转录条目是否属于工具输出。
 fn is_tool_entry(entry: &TranscriptEntry) -> bool {
     entry.kind == "tool" || entry.kind == "tool:error"
 }
 
+/// 根据消息类型生成标题行样式。
 fn transcript_title_line(kind: &str) -> Line<'static> {
     let (label, color) = match kind {
         "assistant" => ("assistant", Color::Green),
@@ -51,6 +54,7 @@ pub(super) struct SessionRender {
     pub(super) toggle_targets: Vec<(usize, usize)>,
 }
 
+/// 将会话转录渲染为可显示的行集合。
 pub(super) fn transcript_lines(state: &ScreenState) -> SessionRender {
     let mut lines = Vec::new();
     let mut toggle_targets = Vec::new();
@@ -140,6 +144,7 @@ pub(super) fn transcript_lines(state: &ScreenState) -> SessionRender {
     }
 }
 
+/// 构建会话区域的最终渲染行。
 pub(super) fn session_lines(state: &ScreenState) -> SessionRender {
     transcript_lines(state)
 }

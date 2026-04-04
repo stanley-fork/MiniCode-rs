@@ -3,14 +3,17 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::state::ScreenState;
 
+/// 返回字符串的字符数量（按 Unicode 标量值计数）。
 pub(crate) fn char_len(value: &str) -> usize {
     value.chars().count()
 }
 
+/// 返回字符串在终端中的显示宽度。
 pub(crate) fn display_width(value: &str) -> usize {
     UnicodeWidthStr::width(value)
 }
 
+/// 将字符偏移转换为字节偏移。
 fn byte_index_from_char_offset(value: &str, char_offset: usize) -> usize {
     if char_offset == 0 {
         return 0;
@@ -21,11 +24,13 @@ fn byte_index_from_char_offset(value: &str, char_offset: usize) -> usize {
     }
 }
 
+/// 在指定字符偏移插入一个字符。
 pub(crate) fn insert_char_at(value: &mut String, char_offset: usize, ch: char) {
     let index = byte_index_from_char_offset(value, char_offset);
     value.insert(index, ch);
 }
 
+/// 删除光标前一个字符。
 pub(crate) fn remove_char_before(value: &mut String, char_offset: usize) -> bool {
     if char_offset == 0 {
         return false;
@@ -36,6 +41,7 @@ pub(crate) fn remove_char_before(value: &mut String, char_offset: usize) -> bool
     true
 }
 
+/// 删除光标位置上的字符。
 pub(crate) fn remove_char_at(value: &mut String, char_offset: usize) -> bool {
     if char_offset >= char_len(value) {
         return false;
@@ -46,6 +52,7 @@ pub(crate) fn remove_char_at(value: &mut String, char_offset: usize) -> bool {
     true
 }
 
+/// 根据当前输入返回可见的斜杠命令候选。
 pub(crate) fn get_visible_commands(input: &str) -> Vec<&'static SlashCommand> {
     if !input.starts_with('/') {
         return vec![];
@@ -60,6 +67,7 @@ pub(crate) fn get_visible_commands(input: &str) -> Vec<&'static SlashCommand> {
         .collect()
 }
 
+/// 在历史记录中向上移动一条。
 pub(crate) fn history_up(state: &mut ScreenState) -> bool {
     if state.history.is_empty() || state.history_index == 0 {
         return false;
@@ -73,6 +81,7 @@ pub(crate) fn history_up(state: &mut ScreenState) -> bool {
     true
 }
 
+/// 在历史记录中向下移动一条。
 pub(crate) fn history_down(state: &mut ScreenState) -> bool {
     if state.history_index >= state.history.len() {
         return false;
@@ -87,6 +96,7 @@ pub(crate) fn history_down(state: &mut ScreenState) -> bool {
     true
 }
 
+/// 调整会话转录滚动偏移。
 pub(crate) fn scroll_transcript_by(state: &mut ScreenState, delta: isize) -> bool {
     let max = state.session_max_scroll_offset as isize;
     let next = (state.transcript_scroll_offset as isize + delta).clamp(0, max) as usize;
@@ -97,6 +107,7 @@ pub(crate) fn scroll_transcript_by(state: &mut ScreenState, delta: isize) -> boo
     true
 }
 
+/// 切换某条工具输出的展开/折叠状态。
 pub(crate) fn toggle_tool_details(state: &mut ScreenState, index: usize) -> bool {
     if index >= state.transcript.len() {
         return false;

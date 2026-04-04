@@ -9,6 +9,7 @@ struct HistoryFile {
     entries: Vec<String>,
 }
 
+/// 加载历史输入并限制最多保留最近 200 条。
 pub fn load_history_entries() -> Vec<String> {
     let path = mini_code_history_path();
     let Ok(content) = fs::read_to_string(path) else {
@@ -24,6 +25,7 @@ pub fn load_history_entries() -> Vec<String> {
     parsed.entries[parsed.entries.len() - keep..].to_vec()
 }
 
+/// 保存历史输入并仅写入最近 200 条记录。
 pub fn save_history_entries(entries: &[String]) -> Result<()> {
     let path = mini_code_history_path();
     if let Some(parent) = path.parent() {

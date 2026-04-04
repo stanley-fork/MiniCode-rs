@@ -8,6 +8,7 @@ use minicode_core::config::{
     MiniCodeSettings, load_effective_settings, mini_code_settings_path, save_minicode_settings,
 };
 
+/// 读取一行用户输入，支持默认值回填。
 fn prompt_line(prompt: &str, default: Option<&str>) -> Result<String> {
     let mut stdout = io::stdout();
     if let Some(d) = default {
@@ -29,6 +30,7 @@ fn prompt_line(prompt: &str, default: Option<&str>) -> Result<String> {
     }
 }
 
+/// 检查 PATH 中是否已包含目标目录。
 fn has_path_entry(target: &str) -> bool {
     std::env::var("PATH")
         .unwrap_or_default()
@@ -36,6 +38,7 @@ fn has_path_entry(target: &str) -> bool {
         .any(|p| p == target)
 }
 
+/// 从 JSON 环境变量映射中读取非空字符串值。
 fn get_env_string(
     env: &std::collections::HashMap<String, serde_json::Value>,
     key: &str,
@@ -45,6 +48,7 @@ fn get_env_string(
         .filter(|x| !x.trim().is_empty())
 }
 
+/// 生成可执行启动脚本并赋予执行权限。
 fn create_launcher_script(launcher_path: &Path, binary_path: &Path) -> Result<()> {
     let script = format!(
         "#!/usr/bin/env bash\nset -euo pipefail\n\nexec \"{}\" \"$@\"\n",
@@ -58,6 +62,7 @@ fn create_launcher_script(launcher_path: &Path, binary_path: &Path) -> Result<()
     Ok(())
 }
 
+/// 交互式安装向导：收集配置并写入启动脚本。
 pub fn run_install_wizard(cwd: &Path) -> Result<()> {
     println!("mini-code installer");
 

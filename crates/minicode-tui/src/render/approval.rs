@@ -12,6 +12,7 @@ const MAX_SCOPE_CHARS: usize = 84;
 const MAX_FEEDBACK_CHARS: usize = 96;
 const MAX_DETAIL_LINES: usize = 8;
 
+/// 按审批弹窗限制截断显示文本。
 fn truncate_for_dialog(input: &str, max_chars: usize) -> String {
     let chars = input.chars().collect::<Vec<_>>();
     if chars.len() <= max_chars {
@@ -24,6 +25,7 @@ fn truncate_for_dialog(input: &str, max_chars: usize) -> String {
     format!("{kept}...")
 }
 
+/// 构建权限审批弹窗的渲染文本行。
 pub(super) fn build_approval_lines(pending: &PendingApproval) -> Vec<Line<'static>> {
     let kind = match pending.request.kind {
         PermissionPromptKind::Path => "PATH",

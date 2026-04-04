@@ -11,6 +11,7 @@ pub struct LoadedSkill {
     pub content: String,
 }
 
+/// 从 SKILL.md 中提取首段可读描述。
 fn extract_description(markdown: &str) -> String {
     let normalized = markdown.replace("\r\n", "\n");
     for block in normalized.split("\n\n") {
@@ -29,6 +30,7 @@ fn extract_description(markdown: &str) -> String {
     "No description provided.".to_string()
 }
 
+/// 返回技能搜索根目录及其来源标签。
 fn skill_roots(cwd: &Path) -> Vec<(PathBuf, String)> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     vec![
@@ -39,6 +41,7 @@ fn skill_roots(cwd: &Path) -> Vec<(PathBuf, String)> {
     ]
 }
 
+/// 扫描并返回当前可用技能摘要。
 pub fn discover_skills(cwd: &Path) -> Vec<SkillSummary> {
     let mut by_name: HashMap<String, SkillSummary> = HashMap::new();
     for (root, source) in skill_roots(cwd) {
@@ -75,6 +78,7 @@ pub fn discover_skills(cwd: &Path) -> Vec<SkillSummary> {
     by_name.into_values().collect()
 }
 
+/// 按名称加载技能全文与元信息。
 pub fn load_skill(cwd: &Path, name: &str) -> Option<LoadedSkill> {
     let normalized = name.trim();
     if normalized.is_empty() {
@@ -96,6 +100,7 @@ pub fn load_skill(cwd: &Path, name: &str) -> Option<LoadedSkill> {
     None
 }
 
+/// 将外部技能安装到用户或项目作用域。
 pub fn install_skill(
     cwd: &Path,
     source_path: &str,
@@ -147,6 +152,7 @@ pub fn install_skill(
     Ok((final_name, target.to_string_lossy().to_string()))
 }
 
+/// 删除托管技能目录并返回删除结果。
 pub fn remove_managed_skill(cwd: &Path, name: &str, scope: &str) -> Result<(bool, String)> {
     let root = if scope == "project" {
         cwd.join(".mini-code/skills")

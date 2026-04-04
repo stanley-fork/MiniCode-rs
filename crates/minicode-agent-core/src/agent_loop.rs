@@ -3,16 +3,22 @@ use minicode_tool::{ToolContext, ToolRegistry};
 use serde_json::Value;
 
 pub trait AgentTurnCallbacks: Send {
+    /// 工具开始执行时触发。
     fn on_tool_start(&mut self, _tool_name: &str, _input: &Value) {}
+    /// 工具返回结果时触发。
     fn on_tool_result(&mut self, _tool_name: &str, _output: &str, _is_error: bool) {}
+    /// 助手给出最终消息时触发。
     fn on_assistant_message(&mut self, _content: &str) {}
+    /// 助手给出进度消息时触发。
     fn on_progress_message(&mut self, _content: &str) {}
 }
 
+/// 判断助手回复是否为空白内容。
 fn is_empty_assistant_response(content: &str) -> bool {
     content.trim().is_empty()
 }
 
+/// 拼接 stop reason 与 block 信息用于诊断输出。
 fn format_diagnostics(
     stop_reason: Option<&str>,
     block_types: Option<&[String]>,
@@ -42,6 +48,7 @@ fn format_diagnostics(
     }
 }
 
+/// 执行一轮 agent 对话，循环处理助手输出与工具调用。
 pub async fn run_agent_turn(
     model: &dyn ModelAdapter,
     tools: &ToolRegistry,
@@ -256,6 +263,7 @@ pub async fn run_agent_turn(
 }
 
 #[allow(dead_code)]
+/// 测试辅助：把字符串封装成 JSON 字符串值。
 fn _to_json_value(v: &str) -> Value {
     Value::String(v.to_string())
 }

@@ -24,10 +24,12 @@ const MCP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const MCP_LIST_TIMEOUT: Duration = Duration::from_secs(3);
 static MCP_LOG_ENABLED: AtomicBool = AtomicBool::new(true);
 
+/// 设置 MCP 日志输出开关。
 pub fn set_mcp_logging_enabled(enabled: bool) {
     MCP_LOG_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
+/// 按开关状态输出 MCP 调试日志。
 fn mcp_log(message: impl AsRef<str>) {
     if !MCP_LOG_ENABLED.load(Ordering::Relaxed) {
         return;
@@ -108,6 +110,7 @@ struct StdioMcpClient {
     next_id: u64,
 }
 
+/// 将协议枚举转换为文本标签。
 fn protocol_label(protocol: JsonRpcProtocol) -> &'static str {
     match protocol {
         JsonRpcProtocol::ContentLength => "content-length",
@@ -116,6 +119,7 @@ fn protocol_label(protocol: JsonRpcProtocol) -> &'static str {
 }
 
 impl StdioMcpClient {
+    /// 按配置启动 MCP 子进程并完成初始化握手。
     fn start(
         server_name: &str,
         config: &McpServerConfig,
@@ -196,6 +200,7 @@ impl StdioMcpClient {
         Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Failed to start MCP server {server_name}")))
     }
 
+    /// 以指定协议尝试启动 MCP 客户端。
     fn start_with_protocol(
         server_name: &str,
         config: &McpServerConfig,
@@ -266,6 +271,7 @@ impl StdioMcpClient {
         })
     }
 
+    /// 发送 JSON-RPC 通知消息。
     fn notify(&mut self, method: &str, params: Value) -> anyhow::Result<()> {
         let msg = JsonRpcMessage {
             jsonrpc: "2.0".to_string(),
@@ -278,10 +284,12 @@ impl StdioMcpClient {
         self.send(&msg)
     }
 
+    /// 发送请求并使用默认超时等待响应。
     fn request(&mut self, method: &str, params: Value) -> anyhow::Result<Value> {
         self.request_with_timeout(method, params, MCP_REQUEST_TIMEOUT)
     }
 
+    /// 发送带超时控制的 JSON-RPC 请求。
     fn request_with_timeout(
         &mut self,
         method: &str,
@@ -358,6 +366,7 @@ impl StdioMcpClient {
         }
     }
 
+    /// 根据协议格式写入 JSON-RPC 消息到 stdin。
     fn send(&mut self, message: &JsonRpcMessage) -> anyhow::Result<()> {
         let body = serde_json::to_vec(message)?;
         match self.protocol {
@@ -375,6 +384,7 @@ impl StdioMcpClient {
         Ok(())
     }
 
+    /// 启动后台线程持续读取 MCP 响应消息。
     fn spawn_reader_loop(
         server_name: String,
         mut stdout: BufReader<ChildStdout>,
@@ -399,6 +409,7 @@ impl StdioMcpClient {
         })
     }
 
+    /// 从 stdout 读取并解析一条 JSON-RPC 消息。
     fn read_message_from(
         server_name: &str,
         stdout: &mut BufReader<ChildStdout>,
@@ -467,6 +478,7 @@ impl StdioMcpClient {
         }
     }
 
+    /// 拉取 MCP 工具描述列表。
     fn list_tools(&mut self) -> anyhow::Result<Vec<McpToolDescriptor>> {
         let result = self.request("tools/list", json!({}))?;
         Ok(result
@@ -476,6 +488,7 @@ impl StdioMcpClient {
             .unwrap_or_default())
     }
 
+    /// 拉取 MCP 资源描述列表。
     fn list_resources(&mut self) -> anyhow::Result<Vec<McpResourceDescriptor>> {
         let result = self.request_with_timeout("resources/list", json!({}), MCP_LIST_TIMEOUT)?;
         Ok(result
@@ -485,6 +498,7 @@ impl StdioMcpClient {
             .unwrap_or_default())
     }
 
+    /// 拉取 MCP Prompt 描述列表。
     fn list_prompts(&mut self) -> anyhow::Result<Vec<McpPromptDescriptor>> {
         let result = self.request_with_timeout("prompts/list", json!({}), MCP_LIST_TIMEOUT)?;
         Ok(result
@@ -494,6 +508,7 @@ impl StdioMcpClient {
             .unwrap_or_default())
     }
 
+    /// 调用 MCP 工具并格式化返回结果。
     fn call_tool(&mut self, name: &str, input: Value) -> anyhow::Result<ToolResult> {
         let result = self.request(
             "tools/call",
@@ -505,6 +520,7 @@ impl StdioMcpClient {
         Ok(format_tool_result(result))
     }
 
+    /// 读取指定 URI 的 MCP 资源。
     fn read_resource(&mut self, uri: &str) -> anyhow::Result<ToolResult> {
         let result = self.request("resources/read", json!({ "uri": uri }))?;
         Ok(ToolResult::ok(
@@ -512,6 +528,7 @@ impl StdioMcpClient {
         ))
     }
 
+    /// 渲染并获取指定 MCP Prompt。
     fn get_prompt(&mut self, name: &str, args: Value) -> anyhow::Result<ToolResult> {
         let result = self.request(
             "prompts/get",
@@ -525,6 +542,7 @@ impl StdioMcpClient {
         ))
     }
 
+    /// 关闭 MCP 子进程并清理句柄。
     fn close(&mut self) -> anyhow::Result<()> {
         mcp_log(format!("server={} closing process", self.server_name));
         let _ = self.process.kill();
@@ -535,6 +553,7 @@ impl StdioMcpClient {
     }
 }
 
+/// 清洗字符串为安全的工具名片段。
 fn sanitize_segment(value: &str) -> String {
     let mut s = value
         .to_lowercase()
@@ -551,6 +570,7 @@ fn sanitize_segment(value: &str) -> String {
     if s.is_empty() { "tool".to_string() } else { s }
 }
 
+/// 将 MCP 原始结果转换为统一 ToolResult。
 fn format_tool_result(result: Value) -> ToolResult {
     let is_error = result
         .get("isError")
@@ -598,18 +618,22 @@ struct McpDynamicTool {
 
 #[async_trait]
 impl Tool for McpDynamicTool {
+    /// 返回包装后的动态工具名。
     fn name(&self) -> &str {
         &self.wrapped_name
     }
 
+    /// 返回动态工具描述。
     fn description(&self) -> &str {
         &self.description
     }
 
+    /// 返回动态工具输入 schema。
     fn input_schema(&self) -> Value {
         self.input_schema.clone()
     }
 
+    /// 代理执行底层 MCP 工具调用。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
         let Ok(mut client) = self.client.lock() else {
             return ToolResult::err("Failed to lock MCP client");
@@ -627,18 +651,22 @@ struct ListMcpResourcesTool {
 
 #[async_trait]
 impl Tool for ListMcpResourcesTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "list_mcp_resources"
     }
 
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "列出当前已连接 MCP 服务提供的资源。"
     }
 
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"server":{"type":"string"}}})
     }
 
+    /// 列出全部或按服务过滤的 MCP 资源。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
         let server_filter = input.get("server").and_then(|v| v.as_str());
         let lines = self
@@ -681,18 +709,22 @@ struct ReadMcpResourceTool {
 
 #[async_trait]
 impl Tool for ReadMcpResourceTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "read_mcp_resource"
     }
 
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "读取指定 MCP 资源。"
     }
 
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"server":{"type":"string"},"uri":{"type":"string"}},"required":["server","uri"]})
     }
 
+    /// 读取指定服务上的 MCP 资源内容。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
         let server = input
             .get("server")
@@ -724,18 +756,22 @@ struct ListMcpPromptsTool {
 
 #[async_trait]
 impl Tool for ListMcpPromptsTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "list_mcp_prompts"
     }
 
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "列出当前已连接 MCP 服务提供的提示模板。"
     }
 
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"server":{"type":"string"}}})
     }
 
+    /// 列出全部或按服务过滤的 MCP Prompt。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
         let server_filter = input.get("server").and_then(|v| v.as_str());
         let lines = self
@@ -793,18 +829,22 @@ struct GetMcpPromptTool {
 
 #[async_trait]
 impl Tool for GetMcpPromptTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "get_mcp_prompt"
     }
 
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "渲染并获取 MCP Prompt。"
     }
 
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"server":{"type":"string"},"name":{"type":"string"},"arguments":{"type":"object","additionalProperties":{"type":"string"}}},"required":["server","name"]})
     }
 
+    /// 调用服务端 Prompt 渲染并返回内容。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
         let server = input
             .get("server")
@@ -832,6 +872,7 @@ impl Tool for GetMcpPromptTool {
     }
 }
 
+/// 按配置连接 MCP 服务并构建可用工具集合。
 pub async fn create_mcp_backed_tools(
     cwd: &std::path::Path,
     mcp_servers: &HashMap<String, McpServerConfig>,
@@ -1065,6 +1106,7 @@ pub async fn create_mcp_backed_tools(
     }
 }
 
+/// 将已有工具与 MCP 工具合并为新的注册表。
 pub fn extend_registry_with_mcp(
     tools: Vec<Arc<dyn Tool>>,
     skills: Vec<SkillSummary>,

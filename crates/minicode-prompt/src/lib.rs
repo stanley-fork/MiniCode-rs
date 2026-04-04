@@ -22,10 +22,12 @@ pub struct McpServerSummary {
     pub prompt_count: Option<usize>,
 }
 
+/// 尝试读取文件内容，失败时返回 `None`。
 fn maybe_read(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
+/// 组合运行上下文、权限、技能和 MCP 信息，生成系统提示词。
 pub fn build_system_prompt(
     cwd: &Path,
     permission_summary: &[String],

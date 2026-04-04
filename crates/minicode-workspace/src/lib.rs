@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, anyhow};
 use minicode_tool::ToolContext;
 
+/// 基于工具上下文解析目标路径，并执行权限校验。
 pub async fn resolve_tool_path(
     context: &ToolContext,
     target_path: &str,
@@ -28,6 +29,7 @@ pub async fn resolve_tool_path(
     Ok(resolved)
 }
 
+/// 确保路径没有逃逸出当前工作区目录。
 fn ensure_inside_workspace(root: &Path, resolved: &Path) -> Result<()> {
     let Ok(relative) = resolved.strip_prefix(root) else {
         return Err(anyhow!("Path escapes workspace: {}", resolved.display()));

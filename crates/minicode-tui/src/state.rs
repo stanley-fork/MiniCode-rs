@@ -77,6 +77,7 @@ pub(crate) struct ChannelCallbacks {
 }
 
 impl AgentTurnCallbacks for ChannelCallbacks {
+    /// 通知 UI 当前开始执行某个工具。
     fn on_tool_start(&mut self, tool_name: &str, input: &serde_json::Value) {
         let _ = self.tx.send(TurnEvent::ToolStart {
             tool_name: tool_name.to_string(),
@@ -84,6 +85,7 @@ impl AgentTurnCallbacks for ChannelCallbacks {
         });
     }
 
+    /// 通知 UI 工具执行完成及其结果。
     fn on_tool_result(&mut self, tool_name: &str, output: &str, is_error: bool) {
         let _ = self.tx.send(TurnEvent::ToolResult {
             tool_name: tool_name.to_string(),
@@ -92,10 +94,12 @@ impl AgentTurnCallbacks for ChannelCallbacks {
         });
     }
 
+    /// 将助手最终消息转发到事件通道。
     fn on_assistant_message(&mut self, content: &str) {
         let _ = self.tx.send(TurnEvent::Assistant(content.to_string()));
     }
 
+    /// 将助手进度消息转发到事件通道。
     fn on_progress_message(&mut self, content: &str) {
         let _ = self.tx.send(TurnEvent::Progress(content.to_string()));
     }

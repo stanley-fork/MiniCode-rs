@@ -32,6 +32,7 @@ pub struct ToolResult {
 }
 
 impl ToolResult {
+    /// 构造成功结果。
     pub fn ok(output: impl Into<String>) -> Self {
         Self {
             ok: true,
@@ -41,6 +42,7 @@ impl ToolResult {
         }
     }
 
+    /// 构造失败结果。
     pub fn err(output: impl Into<String>) -> Self {
         Self {
             ok: false,
@@ -53,9 +55,13 @@ impl ToolResult {
 
 #[async_trait]
 pub trait Tool: Send + Sync {
+    /// 返回工具名称。
     fn name(&self) -> &str;
+    /// 返回工具用途描述。
     fn description(&self) -> &str;
+    /// 返回工具输入 JSON Schema。
     fn input_schema(&self) -> Value;
+    /// 执行工具逻辑。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult;
 }
 
@@ -64,6 +70,7 @@ enum InputValidator {
     CompileError(String),
 }
 
+/// 编译工具输入校验器。
 fn compile_validator(schema: &Value) -> InputValidator {
     match JSONSchema::options()
         .with_draft(Draft::Draft7)
@@ -74,6 +81,7 @@ fn compile_validator(schema: &Value) -> InputValidator {
     }
 }
 
+/// 按工具 schema 校验输入参数。
 fn validate_tool_input(validator: &InputValidator, input: &Value) -> Result<(), String> {
     match validator {
         InputValidator::Compiled(validator) => {
@@ -103,6 +111,7 @@ struct ToolRegistryState {
     disposer: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
 }
 
+/// 组合两个可选的资源释放回调。
 fn combine_disposers(
     left: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
     right: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
@@ -122,6 +131,7 @@ fn combine_disposers(
 }
 
 impl ToolRegistry {
+    /// 创建工具注册表并建立名称索引。
     pub fn new(
         tools: Vec<Arc<dyn Tool>>,
         skills: Vec<SkillSummary>,
@@ -146,6 +156,7 @@ impl ToolRegistry {
         }
     }
 
+    /// 返回当前所有已注册工具。
     pub fn list(&self) -> Vec<Arc<dyn Tool>> {
         self.state
             .read()
@@ -154,6 +165,7 @@ impl ToolRegistry {
             .unwrap_or_default()
     }
 
+    /// 返回已发现技能摘要。
     pub fn get_skills(&self) -> Vec<SkillSummary> {
         self.state
             .read()
@@ -162,6 +174,7 @@ impl ToolRegistry {
             .unwrap_or_default()
     }
 
+    /// 返回 MCP 服务连接摘要。
     pub fn get_mcp_servers(&self) -> Vec<McpServerSummary> {
         self.state
             .read()
@@ -170,12 +183,14 @@ impl ToolRegistry {
             .unwrap_or_default()
     }
 
+    /// 更新 MCP 服务摘要列表。
     pub fn set_mcp_servers(&self, mcp_servers: Vec<McpServerSummary>) {
         if let Ok(mut state) = self.state.write() {
             state.mcp_servers = mcp_servers;
         }
     }
 
+    /// 向注册表追加运行时动态工具。
     pub fn extend_dynamic_tools(
         &self,
         tools: Vec<Arc<dyn Tool>>,
@@ -200,6 +215,7 @@ impl ToolRegistry {
         }
     }
 
+    /// 执行指定工具并返回结果。
     pub async fn execute(
         &self,
         tool_name: &str,
@@ -224,6 +240,7 @@ impl ToolRegistry {
         tool.run(input, context).await
     }
 
+    /// 释放注册表持有的外部资源。
     pub async fn dispose(&self) {
         let disposer = self
             .state

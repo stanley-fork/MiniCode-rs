@@ -11,11 +11,13 @@ struct BackgroundTaskRecord {
     cwd: String,
 }
 
+/// 返回后台任务的全局存储实例。
 fn task_store() -> &'static Mutex<HashMap<String, BackgroundTaskRecord>> {
     static STORE: OnceLock<Mutex<HashMap<String, BackgroundTaskRecord>>> = OnceLock::new();
     STORE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// 获取当前 Unix 时间戳（秒）。
 fn now_unix_seconds() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -23,6 +25,7 @@ fn now_unix_seconds() -> i64 {
         .unwrap_or_default()
 }
 
+/// 生成唯一后台任务 ID。
 fn make_task_id() -> String {
     format!(
         "shell_{:x}_{}",
@@ -31,6 +34,7 @@ fn make_task_id() -> String {
     )
 }
 
+/// 根据进程状态刷新任务运行状态。
 fn refresh_status(mut record: BackgroundTaskRecord) -> BackgroundTaskRecord {
     if record.task.status != "running" {
         return record;
@@ -51,6 +55,7 @@ fn refresh_status(mut record: BackgroundTaskRecord) -> BackgroundTaskRecord {
     record
 }
 
+/// 注册一个后台 shell 任务并返回任务信息。
 pub fn register_background_shell_task(command: &str, pid: i32, cwd: &str) -> BackgroundTaskResult {
     let task = BackgroundTaskResult {
         task_id: make_task_id(),
@@ -72,6 +77,7 @@ pub fn register_background_shell_task(command: &str, pid: i32, cwd: &str) -> Bac
     task
 }
 
+/// 列出所有后台任务并同步刷新其状态。
 pub fn list_background_tasks() -> Vec<BackgroundTaskResult> {
     let mut output = Vec::new();
     if let Ok(mut tasks) = task_store().lock() {
@@ -88,6 +94,7 @@ pub fn list_background_tasks() -> Vec<BackgroundTaskResult> {
 }
 
 #[allow(dead_code)]
+/// 查询单个后台任务状态。
 pub fn get_background_task(task_id: &str) -> Option<BackgroundTaskResult> {
     if let Ok(mut tasks) = task_store().lock() {
         let record = tasks.get(task_id).cloned()?;
@@ -99,6 +106,7 @@ pub fn get_background_task(task_id: &str) -> Option<BackgroundTaskResult> {
 }
 
 #[allow(dead_code)]
+/// 查询后台任务的启动目录。
 pub fn get_background_task_cwd(task_id: &str) -> Option<String> {
     if let Ok(tasks) = task_store().lock() {
         return tasks.get(task_id).map(|x| x.cwd.clone());

@@ -5,3 +5,6 @@ Cargo.lock
 .DS_Store
 *.rs.bk
 
+.idea
+.codex
+.vscode

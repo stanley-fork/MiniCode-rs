@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 pub struct MockModelAdapter;
 
+/// 取最近一条用户消息文本。
 fn last_user_message(messages: &[ChatMessage]) -> String {
     messages
         .iter()
@@ -16,6 +17,7 @@ fn last_user_message(messages: &[ChatMessage]) -> String {
         .unwrap_or_default()
 }
 
+/// 取最近一条工具结果消息。
 fn last_tool_message(messages: &[ChatMessage]) -> Option<(String, String, String)> {
     messages.iter().rev().find_map(|m| match m {
         ChatMessage::ToolResult {
@@ -28,6 +30,7 @@ fn last_tool_message(messages: &[ChatMessage]) -> Option<(String, String, String
     })
 }
 
+/// 取最近一次助手发起的工具调用名称。
 fn extract_latest_assistant_call(messages: &[ChatMessage]) -> Option<String> {
     messages.iter().rev().find_map(|m| match m {
         ChatMessage::AssistantToolCall { tool_name, .. } => Some(tool_name.clone()),
@@ -37,6 +40,7 @@ fn extract_latest_assistant_call(messages: &[ChatMessage]) -> Option<String> {
 
 #[async_trait]
 impl ModelAdapter for MockModelAdapter {
+    /// 根据简单规则返回工具调用或最终回复，用于本地测试。
     async fn next(&self, messages: &[ChatMessage]) -> Result<AgentStep> {
         // 阶段 1: 如果有工具结果，根据前一个工具调用来生成响应
         if let Some((_, _, content)) = last_tool_message(messages)
@@ -289,6 +293,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    /// 验证 `/tools` 返回工具清单文本。
     async fn test_mock_model_tools_command() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {
@@ -305,6 +310,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证 `/ls` 会生成 `list_files` 工具调用。
     async fn test_mock_model_ls_command() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {
@@ -322,6 +328,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证 `/grep` 会生成 `grep_files` 工具调用。
     async fn test_mock_model_grep_command() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {
@@ -343,6 +350,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证 `/read` 会生成 `read_file` 工具调用。
     async fn test_mock_model_read_command() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {
@@ -363,6 +371,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证 `/write` 会生成 `write_file` 工具调用。
     async fn test_mock_model_write_command() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {
@@ -387,6 +396,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证 `/edit` 会生成 `edit_file` 工具调用。
     async fn test_mock_model_edit_command() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {
@@ -409,6 +419,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证拿到工具结果后会给出最终回答。
     async fn test_mock_model_tool_result_response() {
         let mock = MockModelAdapter;
         let messages = vec![
@@ -438,6 +449,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证未知输入会返回默认帮助文本。
     async fn test_mock_model_default_response() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {
@@ -454,6 +466,7 @@ mod tests {
     }
 
     #[tokio::test]
+    /// 验证 `/patch` 会生成批量替换调用。
     async fn test_mock_model_patch_command() {
         let mock = MockModelAdapter;
         let messages = vec![ChatMessage::User {

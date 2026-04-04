@@ -31,6 +31,7 @@ use turn::{handle_approval_key, handle_submit};
 struct TerminalGuard;
 
 impl TerminalGuard {
+    /// 进入 TUI 模式并打开备用屏幕。
     fn enter() -> Result<Self> {
         let mut stdout = io::stdout();
         enable_raw_mode()?;
@@ -40,6 +41,7 @@ impl TerminalGuard {
 }
 
 impl Drop for TerminalGuard {
+    /// 退出时恢复终端状态。
     fn drop(&mut self) {
         let _ = disable_raw_mode();
         let _ = execute!(
@@ -53,6 +55,7 @@ impl Drop for TerminalGuard {
 
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 
+/// 运行主 TUI 事件循环并处理用户输入。
 pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
     let _terminal_guard = TerminalGuard::enter()?;
     let backend = CrosstermBackend::new(io::stdout());

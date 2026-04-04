@@ -44,10 +44,12 @@ enum Commands {
     Help,
 }
 
+/// 检查标准输入输出是否都连接到交互式终端。
 fn is_interactive_terminal() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
+/// 把 CLI 子命令转换为管理命令参数列表。
 fn command_to_management_argv(command: &Commands) -> Option<Vec<String>> {
     match command {
         Commands::Mcp { args } => {
@@ -65,6 +67,7 @@ fn command_to_management_argv(command: &Commands) -> Option<Vec<String>> {
     }
 }
 
+/// 将日志文本按字符数截断，超出时追加省略号。
 fn truncate_log_text(input: &str, max_chars: usize) -> String {
     let mut out = String::new();
     for ch in input.chars().take(max_chars) {
@@ -76,6 +79,7 @@ fn truncate_log_text(input: &str, max_chars: usize) -> String {
     out
 }
 
+/// 输出 MCP 服务启动阶段的摘要日志。
 fn log_mcp_bootstrap(servers: &[McpServerSummary]) {
     eprintln!(
         "\x1b[1;34m[bootstrap]\x1b[0m \x1b[1mMCP servers configured:\x1b[0m {}",
@@ -116,6 +120,7 @@ fn log_mcp_bootstrap(servers: &[McpServerSummary]) {
 }
 
 #[tokio::main]
+/// 程序入口，失败时以非零状态退出。
 async fn main() {
     if let Err(err) = real_main().await {
         let _ = err;
@@ -123,6 +128,7 @@ async fn main() {
     }
 }
 
+/// 执行主流程：解析参数、初始化运行时并启动 TUI。
 async fn real_main() -> Result<()> {
     let cwd = std::env::current_dir()?;
     let cli = Cli::parse();

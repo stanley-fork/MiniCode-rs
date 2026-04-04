@@ -34,6 +34,7 @@ pub struct AnthropicModelAdapter {
 }
 
 impl AnthropicModelAdapter {
+    /// 创建 Anthropic 适配器并绑定工具注册表与工作目录。
     pub fn new(tools: Arc<ToolRegistry>, cwd: std::path::PathBuf) -> Self {
         Self {
             client: reqwest::Client::new(),
@@ -42,6 +43,7 @@ impl AnthropicModelAdapter {
         }
     }
 
+    /// 解析助手文本中的 `<progress>/<final>` 标记。
     fn parse_assistant_text(content: &str) -> (String, Option<String>) {
         let trimmed = content.trim();
         if trimmed.starts_with("<final>") || trimmed.starts_with("[FINAL]") {
@@ -69,10 +71,12 @@ impl AnthropicModelAdapter {
         (trimmed.to_string(), None)
     }
 
+    /// 判断指定 HTTP 状态码是否应触发重试。
     fn should_retry(status: u16) -> bool {
         status == 429 || (500..600).contains(&status)
     }
 
+    /// 读取最大重试次数配置。
     fn get_retry_limit() -> usize {
         std::env::var("MINI_CODE_MAX_RETRIES")
             .ok()
@@ -80,6 +84,7 @@ impl AnthropicModelAdapter {
             .unwrap_or(DEFAULT_MAX_RETRIES)
     }
 
+    /// 计算当前重试轮次的退避延迟。
     fn retry_delay_ms(attempt: usize, retry_after_ms: Option<u64>) -> u64 {
         if let Some(ms) = retry_after_ms {
             return ms;
@@ -92,6 +97,7 @@ impl AnthropicModelAdapter {
         (base as f64 * (1.0 + jitter)) as u64
     }
 
+    /// 解析响应头中的 `Retry-After` 为毫秒。
     fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<u64> {
         let raw = headers.get("retry-after")?.to_str().ok()?;
         if let Ok(sec) = raw.parse::<u64>() {
@@ -106,6 +112,7 @@ impl AnthropicModelAdapter {
         None
     }
 
+    /// 将内部消息格式转换为 Anthropic 请求消息。
     fn to_anthropic_messages(messages: &[ChatMessage]) -> (String, Vec<AnthropicMessage>) {
         let mut system = vec![];
         let mut converted: Vec<AnthropicMessage> = vec![];
@@ -176,6 +183,7 @@ impl AnthropicModelAdapter {
         (system.join("\n\n"), converted)
     }
 
+    /// 加载当前请求所需的运行时配置。
     async fn get_runtime(&self) -> Result<RuntimeConfig> {
         load_runtime_config(&self.cwd)
     }
@@ -183,6 +191,7 @@ impl AnthropicModelAdapter {
 
 #[async_trait]
 impl ModelAdapter for AnthropicModelAdapter {
+    /// 请求模型下一步输出，并解析为助手消息或工具调用。
     async fn next(&self, messages: &[ChatMessage]) -> Result<AgentStep> {
         let runtime = self.get_runtime().await?;
         let (system, anth_messages) = Self::to_anthropic_messages(messages);

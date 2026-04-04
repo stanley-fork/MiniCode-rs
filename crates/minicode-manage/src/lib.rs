@@ -8,12 +8,14 @@ use minicode_core::config::{
 };
 use minicode_skills::{discover_skills, install_skill, remove_managed_skill};
 
+/// 打印管理命令帮助信息。
 fn print_usage() {
     println!(
         "minicode management commands\n\nminicode mcp list [--project]\nminicode mcp add <name> [--project] [--protocol <auto|content-length|newline-json>] [--env KEY=VALUE ...] -- <command> [args...]\nminicode mcp remove <name> [--project]\n\nminicode skills list\nminicode skills add <path-to-skill-or-dir> [--name <name>] [--project]\nminicode skills remove <name> [--project]"
     );
 }
 
+/// 解析 `--project` 作用域并返回剩余参数。
 fn parse_scope(args: &[String]) -> (String, Vec<String>) {
     let mut rest = args.to_vec();
     if let Some(idx) = rest.iter().position(|x| x == "--project") {
@@ -23,6 +25,7 @@ fn parse_scope(args: &[String]) -> (String, Vec<String>) {
     ("user".to_string(), rest)
 }
 
+/// 读取并移除单值选项参数。
 fn take_option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
     if let Some(idx) = args.iter().position(|x| x == name) {
         if idx + 1 >= args.len() {
@@ -36,6 +39,7 @@ fn take_option(args: &mut Vec<String>, name: &str) -> Result<Option<String>> {
     Ok(None)
 }
 
+/// 读取并移除可重复选项参数。
 fn take_repeat_option(args: &mut Vec<String>, name: &str) -> Result<Vec<String>> {
     let mut values = vec![];
     while let Some(idx) = args.iter().position(|x| x == name) {
@@ -50,6 +54,7 @@ fn take_repeat_option(args: &mut Vec<String>, name: &str) -> Result<Vec<String>>
     Ok(values)
 }
 
+/// 解析 `KEY=VALUE` 形式的环境变量参数。
 fn parse_env_pairs(entries: &[String]) -> Result<HashMap<String, serde_json::Value>> {
     let mut env = HashMap::new();
     for entry in entries {
@@ -66,6 +71,7 @@ fn parse_env_pairs(entries: &[String]) -> Result<HashMap<String, serde_json::Val
     Ok(env)
 }
 
+/// 处理 `minicode mcp ...` 管理子命令。
 async fn handle_mcp_command(cwd: &Path, args: &[String]) -> Result<bool> {
     let Some(subcommand) = args.first() else {
         print_usage();
@@ -156,6 +162,7 @@ async fn handle_mcp_command(cwd: &Path, args: &[String]) -> Result<bool> {
     }
 }
 
+/// 处理 `minicode skills ...` 管理子命令。
 async fn handle_skills_command(cwd: &Path, args: &[String]) -> Result<bool> {
     let Some(subcommand) = args.first() else {
         print_usage();
@@ -204,6 +211,7 @@ async fn handle_skills_command(cwd: &Path, args: &[String]) -> Result<bool> {
     }
 }
 
+/// 统一分发管理命令入口。
 pub async fn maybe_handle_management_command(cwd: &Path, argv: &[String]) -> Result<bool> {
     let Some(category) = argv.first() else {
         return Ok(false);

@@ -15,6 +15,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::process::Command;
 
+/// 控制 MCP 启动阶段日志开关。
 pub fn set_mcp_startup_logging_enabled(enabled: bool) {
     set_mcp_logging_enabled(enabled);
 }
@@ -23,15 +24,19 @@ pub fn set_mcp_startup_logging_enabled(enabled: bool) {
 pub struct AskUserTool;
 #[async_trait]
 impl Tool for AskUserTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "ask_user"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "向用户提问并暂停当前轮次。"
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"question":{"type":"string"}},"required":["question"]})
     }
+    /// 透传问题并要求当前轮等待用户回复。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
         let question = input
             .get("question")
@@ -51,15 +56,19 @@ impl Tool for AskUserTool {
 pub struct ListFilesTool;
 #[async_trait]
 impl Tool for ListFilesTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "list_files"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "列出目录内容（最多200条）。"
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"}}})
     }
+    /// 列出目标目录中的文件和子目录。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult {
         let path = input.get("path").and_then(|x| x.as_str()).unwrap_or(".");
         let target = match resolve_tool_path(context, path, "list").await {
@@ -102,15 +111,19 @@ struct GrepInput {
 }
 #[async_trait]
 impl Tool for GrepFilesTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "grep_files"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "Search text using ripgrep, with results limited to first 100 matches for performance."
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"}},"required":["pattern"]})
     }
+    /// 使用 `rg` 搜索文本并返回匹配结果。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult {
         let parsed: GrepInput = match serde_json::from_value(input) {
             Ok(v) => v,
@@ -167,15 +180,19 @@ impl Tool for GrepFilesTool {
 pub struct ReadFileTool;
 #[async_trait]
 impl Tool for ReadFileTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "read_file"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "Read UTF-8 text file with optional offset/limit for chunked reading. Check TRUNCATED header."
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"number"},"limit":{"type":"number"}},"required":["path"]})
     }
+    /// 分块读取 UTF-8 文件并带上截断头信息。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult {
         let path = input.get("path").and_then(|x| x.as_str()).unwrap_or("");
         if path.is_empty() {
@@ -227,15 +244,19 @@ pub struct WriteLikeTool {
 }
 #[async_trait]
 impl Tool for WriteLikeTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         self.name
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         self.description
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]})
     }
+    /// 写入或整体替换文件内容（带权限审阅）。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult {
         let path = input.get("path").and_then(|x| x.as_str()).unwrap_or("");
         let content = input.get("content").and_then(|x| x.as_str()).unwrap_or("");
@@ -259,15 +280,19 @@ impl Tool for WriteLikeTool {
 pub struct EditFileTool;
 #[async_trait]
 impl Tool for EditFileTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "edit_file"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "Apply line-by-line edits to files using precise search/replace patterns."
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"},"search":{"type":"string"},"replace":{"type":"string"},"replaceAll":{"type":"boolean"}},"required":["path","search","replace"]})
     }
+    /// 执行单次或全量字符串替换编辑。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult {
         let path = input.get("path").and_then(|x| x.as_str()).unwrap_or("");
         let search = input.get("search").and_then(|x| x.as_str()).unwrap_or("");
@@ -317,15 +342,19 @@ struct Replacement {
 }
 #[async_trait]
 impl Tool for PatchFileTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "patch_file"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "对单文件执行批量替换。"
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"path":{"type":"string"},"replacements":{"type":"array","items":{"type":"object","properties":{"search":{"type":"string"},"replace":{"type":"string"},"replaceAll":{"type":"boolean"}},"required":["search","replace"]}}},"required":["path","replacements"]})
     }
+    /// 依次应用多组查找替换规则。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult {
         let path = input.get("path").and_then(|x| x.as_str()).unwrap_or("");
         let replacements: Vec<Replacement> = match input.get("replacements").cloned() {
@@ -369,21 +398,26 @@ pub struct LoadSkillTool {
     cwd: std::path::PathBuf,
 }
 impl LoadSkillTool {
+    /// 创建技能加载工具并绑定工作目录。
     pub fn new(cwd: std::path::PathBuf) -> Self {
         Self { cwd }
     }
 }
 #[async_trait]
 impl Tool for LoadSkillTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "load_skill"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "读取某个技能的 SKILL.md 内容。"
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})
     }
+    /// 读取指定技能的 SKILL.md 内容。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
         let name = input.get("name").and_then(|x| x.as_str()).unwrap_or("");
         if name.is_empty() {
@@ -405,6 +439,7 @@ struct RunCommandInput {
     cwd: Option<String>,
 }
 
+/// 解析命令行字符串为命令与参数列表。
 fn split_command_line(command_line: &str) -> Vec<String> {
     shell_words::split(command_line).unwrap_or_else(|_| {
         command_line
@@ -414,6 +449,7 @@ fn split_command_line(command_line: &str) -> Vec<String> {
     })
 }
 
+/// 判断输入是否为需要 shell 执行的片段。
 fn looks_like_shell_snippet(command: &str, args: &[String]) -> bool {
     if !args.is_empty() {
         return false;
@@ -421,6 +457,7 @@ fn looks_like_shell_snippet(command: &str, args: &[String]) -> bool {
     command.chars().any(|c| "|&;<>()$`".contains(c))
 }
 
+/// 判断命令是否在允许集合中。
 fn is_allowed_command(command: &str) -> bool {
     is_read_only_command(command)
         || matches!(
@@ -429,6 +466,7 @@ fn is_allowed_command(command: &str) -> bool {
         )
 }
 
+/// 判断命令是否属于只读命令。
 fn is_read_only_command(command: &str) -> bool {
     matches!(
         command,
@@ -452,6 +490,7 @@ fn is_read_only_command(command: &str) -> bool {
     )
 }
 
+/// 判断命令是否是后台 shell 片段。
 fn is_background_shell_snippet(command: &str, args: &[String]) -> bool {
     if !args.is_empty() {
         return false;
@@ -462,15 +501,19 @@ fn is_background_shell_snippet(command: &str, args: &[String]) -> bool {
 
 #[async_trait]
 impl Tool for RunCommandTool {
+    /// 返回工具名称。
     fn name(&self) -> &str {
         "run_command"
     }
+    /// 返回工具描述。
     fn description(&self) -> &str {
         "运行常见开发命令。支持通过 command 传入完整 shell 片段。"
     }
+    /// 返回输入参数 schema。
     fn input_schema(&self) -> Value {
         json!({"type":"object","properties":{"command":{"type":"string"},"args":{"type":"array","items":{"type":"string"}},"cwd":{"type":"string"}},"required":["command"]})
     }
+    /// 执行本地命令，支持权限审批和后台运行。
     async fn run(&self, input: Value, context: &ToolContext) -> ToolResult {
         let parsed: RunCommandInput = match serde_json::from_value(input) {
             Ok(v) => v,
@@ -611,6 +654,7 @@ impl Tool for RunCommandTool {
     }
 }
 
+/// 创建默认工具注册表，并按配置注入 MCP 工具。
 pub async fn create_default_tool_registry(
     cwd: &std::path::Path,
     runtime: Option<&RuntimeConfig>,

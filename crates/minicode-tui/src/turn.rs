@@ -22,6 +22,7 @@ use crate::state::{
     ChannelCallbacks, PendingApproval, ScreenState, TranscriptEntry, TuiAppArgs, TurnEvent,
 };
 
+/// 向会话转录中写入一条错误消息并更新状态。
 fn push_error_to_session(state: &mut ScreenState, message: impl Into<String>) {
     state.transcript.push(TranscriptEntry {
         kind: "tool:error".to_string(),
@@ -31,6 +32,7 @@ fn push_error_to_session(state: &mut ScreenState, message: impl Into<String>) {
     state.status = Some("Error".to_string());
 }
 
+/// 为工具输入生成便于展示的简短摘要。
 fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
         return format!("{} path={}", tool_name, path);
@@ -41,6 +43,7 @@ fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     serde_json::to_string(input).unwrap_or_else(|_| "(invalid input)".to_string())
 }
 
+/// 应用单个回合事件到 UI 状态，必要时返回新消息列表。
 fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<ChatMessage>> {
     match event {
         TurnEvent::ToolStart { tool_name, input } => {
@@ -125,6 +128,7 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
     }
 }
 
+/// 在模型忙碌期间处理允许的键鼠事件。
 fn handle_busy_event(state: &mut ScreenState, event: Event) {
     match event {
         Event::Mouse(mouse) => match mouse.kind {
@@ -199,6 +203,7 @@ fn handle_busy_event(state: &mut ScreenState, event: Event) {
     }
 }
 
+/// 处理权限审批弹窗中的键盘交互。
 pub(crate) fn handle_approval_key(state: &mut ScreenState, key: KeyEvent) -> bool {
     let Some(pending) = state.pending_approval.as_mut() else {
         return false;
@@ -300,6 +305,7 @@ pub(crate) fn handle_approval_key(state: &mut ScreenState, key: KeyEvent) -> boo
     }
 }
 
+/// 构造将权限请求转发到 UI 的回调处理器。
 fn build_prompt_handler(tx: mpsc::UnboundedSender<TurnEvent>) -> PermissionPromptHandler {
     Arc::new(move |request| {
         let event_tx = tx.clone();
@@ -328,6 +334,7 @@ fn build_prompt_handler(tx: mpsc::UnboundedSender<TurnEvent>) -> PermissionPromp
     })
 }
 
+/// 处理用户提交：本地命令、快捷工具或模型回合。
 pub(crate) async fn handle_submit(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     args: &mut TuiAppArgs,

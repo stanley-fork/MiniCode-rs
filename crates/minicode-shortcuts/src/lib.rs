@@ -4,6 +4,7 @@ pub struct LocalToolShortcut {
     pub input: serde_json::Value,
 }
 
+/// 解析本地斜杠命令并映射为内置工具调用。
 pub fn parse_local_tool_shortcut(input: &str) -> Option<LocalToolShortcut> {
     if input == "/ls" {
         return Some(LocalToolShortcut {
