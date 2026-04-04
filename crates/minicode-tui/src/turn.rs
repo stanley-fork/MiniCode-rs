@@ -437,12 +437,14 @@ pub(crate) async fn handle_submit(
         return Ok(false);
     }
 
+    let skills = args.tools.get_skills();
+    let mcp_servers = args.tools.get_mcp_servers();
     messages[0] = ChatMessage::System {
         content: build_system_prompt(
             &args.cwd,
             &args.permissions.get_summary(),
-            args.tools.get_skills(),
-            args.tools.get_mcp_servers(),
+            &skills,
+            &mcp_servers,
         ),
     };
     messages.push(ChatMessage::User {

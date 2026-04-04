@@ -12,6 +12,7 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use minicode_core::config::load_runtime_config;
+use minicode_core::prompt::McpServerSummary;
 use minicode_core::types::ModelAdapter;
 
 #[derive(Debug, Parser)]
@@ -64,6 +65,56 @@ fn command_to_management_argv(command: &Commands) -> Option<Vec<String>> {
     }
 }
 
+fn truncate_log_text(input: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for ch in input.chars().take(max_chars) {
+        out.push(ch);
+    }
+    if input.chars().count() > max_chars {
+        out.push_str("...");
+    }
+    out
+}
+
+fn log_mcp_bootstrap(servers: &[McpServerSummary]) {
+    eprintln!(
+        "\x1b[1;34m[bootstrap]\x1b[0m \x1b[1mMCP servers configured:\x1b[0m {}",
+        servers.len()
+    );
+    if servers.is_empty() {
+        return;
+    }
+
+    for server in servers {
+        let protocol = server
+            .protocol
+            .as_ref()
+            .map(|x| format!(", protocol={x}"))
+            .unwrap_or_default();
+        let error = server
+            .error
+            .as_ref()
+            .map(|x| format!(", error={}", truncate_log_text(x, 220)))
+            .unwrap_or_default();
+        let status_colored = match server.status.as_str() {
+            "connected" => "\x1b[32mconnected\x1b[0m".to_string(),
+            "error" => "\x1b[31merror\x1b[0m".to_string(),
+            "disabled" => "\x1b[90mdisabled\x1b[0m".to_string(),
+            _ => server.status.clone(),
+        };
+        eprintln!(
+            "\x1b[1;34m[bootstrap]\x1b[0m MCP {}: status={}, tools={}, resources={}, prompts={}{}{}",
+            server.name,
+            status_colored,
+            server.tool_count,
+            server.resource_count.unwrap_or(0),
+            server.prompt_count.unwrap_or(0),
+            protocol,
+            error
+        );
+    }
+}
+
 #[tokio::main]
 async fn main() {
     if let Err(err) = real_main().await {
@@ -111,11 +162,15 @@ async fn real_main() -> Result<()> {
         ));
     }
 
+    let mcp_servers = tools.get_mcp_servers();
+    log_mcp_bootstrap(&mcp_servers);
+    set_mcp_startup_logging_enabled(false);
+
     run_tui_app(TuiAppArgs {
-        runtime,
+        runtime: runtime.clone(),
         tools: tools.clone(),
         model,
-        cwd,
+        cwd: cwd.clone(),
         permissions,
     })
     .await?;

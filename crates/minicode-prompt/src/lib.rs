@@ -53,7 +53,10 @@ pub fn build_system_prompt(
     ];
 
     if !permission_summary.is_empty() {
-        lines.push(format!("Permission context:\n{}", permission_summary.join("\n")));
+        lines.push(format!(
+            "Permission context:\n{}",
+            permission_summary.join("\n")
+        ));
     }
 
     if skills.is_empty() {
@@ -91,7 +94,13 @@ pub fn build_system_prompt(
                     .unwrap_or_default();
                 format!(
                     "- {}: {}, tools={}{}{}{}{}",
-                    server.name, server.status, server.tool_count, resources, prompts, protocol, suffix
+                    server.name,
+                    server.status,
+                    server.tool_count,
+                    resources,
+                    prompts,
+                    protocol,
+                    suffix
                 )
             })
             .collect::<Vec<_>>()

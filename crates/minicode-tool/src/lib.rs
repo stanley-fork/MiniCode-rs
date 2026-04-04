@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 use jsonschema::{Draft, JSONSchema};
@@ -91,12 +91,34 @@ fn validate_tool_input(validator: &InputValidator, input: &Value) -> Result<(), 
 }
 
 pub struct ToolRegistry {
+    state: RwLock<ToolRegistryState>,
+}
+
+struct ToolRegistryState {
     tools: Vec<Arc<dyn Tool>>,
     index: HashMap<String, usize>,
     validators: Vec<InputValidator>,
     skills: Vec<SkillSummary>,
     mcp_servers: Vec<McpServerSummary>,
     disposer: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
+}
+
+fn combine_disposers(
+    left: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
+    right: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
+) -> Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>> {
+    match (left, right) {
+        (None, None) => None,
+        (Some(one), None) | (None, Some(one)) => Some(one),
+        (Some(a), Some(b)) => Some(Arc::new(move || {
+            let a = a.clone();
+            let b = b.clone();
+            Box::pin(async move {
+                a().await;
+                b().await;
+            })
+        })),
+    }
 }
 
 impl ToolRegistry {
@@ -113,25 +135,69 @@ impl ToolRegistry {
             validators.push(compile_validator(&tool.input_schema()));
         }
         Self {
-            tools,
-            index,
-            validators,
-            skills,
-            mcp_servers,
-            disposer,
+            state: RwLock::new(ToolRegistryState {
+                tools,
+                index,
+                validators,
+                skills,
+                mcp_servers,
+                disposer,
+            }),
         }
     }
 
-    pub fn list(&self) -> &[Arc<dyn Tool>] {
-        &self.tools
+    pub fn list(&self) -> Vec<Arc<dyn Tool>> {
+        self.state
+            .read()
+            .ok()
+            .map(|state| state.tools.clone())
+            .unwrap_or_default()
     }
 
-    pub fn get_skills(&self) -> &[SkillSummary] {
-        &self.skills
+    pub fn get_skills(&self) -> Vec<SkillSummary> {
+        self.state
+            .read()
+            .ok()
+            .map(|state| state.skills.clone())
+            .unwrap_or_default()
     }
 
-    pub fn get_mcp_servers(&self) -> &[McpServerSummary] {
-        &self.mcp_servers
+    pub fn get_mcp_servers(&self) -> Vec<McpServerSummary> {
+        self.state
+            .read()
+            .ok()
+            .map(|state| state.mcp_servers.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn set_mcp_servers(&self, mcp_servers: Vec<McpServerSummary>) {
+        if let Ok(mut state) = self.state.write() {
+            state.mcp_servers = mcp_servers;
+        }
+    }
+
+    pub fn extend_dynamic_tools(
+        &self,
+        tools: Vec<Arc<dyn Tool>>,
+        mcp_servers: Vec<McpServerSummary>,
+        disposer: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
+    ) {
+        if let Ok(mut state) = self.state.write() {
+            for tool in tools {
+                let name = tool.name().to_string();
+                if state.index.contains_key(&name) {
+                    continue;
+                }
+                let idx = state.tools.len();
+                state.index.insert(name, idx);
+                state
+                    .validators
+                    .push(compile_validator(&tool.input_schema()));
+                state.tools.push(tool);
+            }
+            state.mcp_servers = mcp_servers;
+            state.disposer = combine_disposers(state.disposer.clone(), disposer);
+        }
     }
 
     pub async fn execute(
@@ -140,13 +206,18 @@ impl ToolRegistry {
         input: Value,
         context: &ToolContext,
     ) -> ToolResult {
-        let Some(idx) = self.index.get(tool_name) else {
-            return ToolResult::err(format!("Unknown tool: {tool_name}"));
+        let (tool, validation_error) = if let Ok(state) = self.state.read() {
+            let Some(idx) = state.index.get(tool_name) else {
+                return ToolResult::err(format!("Unknown tool: {tool_name}"));
+            };
+            let tool = state.tools[*idx].clone();
+            let validation_error = validate_tool_input(&state.validators[*idx], &input).err();
+            (tool, validation_error)
+        } else {
+            return ToolResult::err("Tool registry lock poisoned");
         };
 
-        let tool = &self.tools[*idx];
-        let validator = &self.validators[*idx];
-        if let Err(err) = validate_tool_input(validator, &input) {
+        if let Some(err) = validation_error {
             return ToolResult::err(err);
         }
 
@@ -154,7 +225,12 @@ impl ToolRegistry {
     }
 
     pub async fn dispose(&self) {
-        if let Some(disposer) = &self.disposer {
+        let disposer = self
+            .state
+            .read()
+            .ok()
+            .and_then(|state| state.disposer.clone());
+        if let Some(disposer) = disposer {
             disposer().await;
         }
     }

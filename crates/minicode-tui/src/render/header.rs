@@ -4,6 +4,8 @@ use ratatui::text::{Line, Span};
 use crate::state::{ScreenState, TuiAppArgs};
 
 pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<Line<'static>> {
+    let skills_count = args.tools.get_skills().len();
+    let mcp_count = args.tools.get_mcp_servers().len();
     let model = args
         .runtime
         .as_ref()
@@ -93,8 +95,8 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
                 " messages={} events={} skills={} mcp={}",
                 state.message_count,
                 state.transcript.len(),
-                args.tools.get_skills().len(),
-                args.tools.get_mcp_servers().len()
+                skills_count,
+                mcp_count
             )),
             Span::raw(" | local"),
         ]),

@@ -66,12 +66,16 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
     state.history_index = state.history.len();
 
     let mut messages = vec![ChatMessage::System {
-        content: build_system_prompt(
-            &args.cwd,
-            &args.permissions.get_summary(),
-            args.tools.get_skills(),
-            args.tools.get_mcp_servers(),
-        ),
+        content: {
+            let skills = args.tools.get_skills();
+            let mcp_servers = args.tools.get_mcp_servers();
+            build_system_prompt(
+                &args.cwd,
+                &args.permissions.get_summary(),
+                &skills,
+                &mcp_servers,
+            )
+        },
     }];
 
     let mut should_exit = false;

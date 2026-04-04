@@ -1,15 +1,39 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use futures::future::BoxFuture;
+use futures::stream::{FuturesUnordered, StreamExt};
 use minicode_core::config::McpServerConfig;
 use minicode_core::prompt::{McpServerSummary, SkillSummary};
 use minicode_tool::{Tool, ToolContext, ToolRegistry, ToolResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+// `npx` based MCP servers (e.g. server-filesystem) can take noticeably longer
+// on first run while package resolution/download happens.
+const MCP_STARTUP_TIMEOUT: Duration = Duration::from_secs(45);
+const MCP_INIT_TIMEOUT: Duration = Duration::from_secs(2);
+const MCP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const MCP_LIST_TIMEOUT: Duration = Duration::from_secs(3);
+static MCP_LOG_ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub fn set_mcp_logging_enabled(enabled: bool) {
+    MCP_LOG_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+fn mcp_log(message: impl AsRef<str>) {
+    if !MCP_LOG_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
+    eprintln!("\x1b[36m[mcp]\x1b[0m {}", message.as_ref());
+}
 
 pub struct McpBundle {
     pub tools: Vec<Arc<dyn Tool>>,
@@ -78,9 +102,17 @@ struct StdioMcpClient {
     server_name: String,
     process: Child,
     stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    responses: Receiver<anyhow::Result<JsonRpcMessage>>,
+    reader_handle: Option<JoinHandle<()>>,
     protocol: JsonRpcProtocol,
     next_id: u64,
+}
+
+fn protocol_label(protocol: JsonRpcProtocol) -> &'static str {
+    match protocol {
+        JsonRpcProtocol::ContentLength => "content-length",
+        JsonRpcProtocol::NewlineJson => "newline-json",
+    }
 }
 
 impl StdioMcpClient {
@@ -106,9 +138,19 @@ impl StdioMcpClient {
         let mut last_err = None;
 
         for protocol in protocol_candidates {
+            mcp_log(format!(
+                "server={} trying protocol={}",
+                server_name,
+                protocol_label(protocol)
+            ));
             match Self::start_with_protocol(server_name, config, cwd, protocol) {
                 Ok(mut client) => {
-                    let init = client.request(
+                    mcp_log(format!(
+                        "server={} protocol={} spawned, sending initialize",
+                        server_name,
+                        protocol_label(protocol)
+                    ));
+                    let init = client.request_with_timeout(
                         "initialize",
                         json!({
                             "protocolVersion": "2024-11-05",
@@ -118,16 +160,34 @@ impl StdioMcpClient {
                                 "version": "0.1.0"
                             }
                         }),
+                        MCP_INIT_TIMEOUT,
                     );
                     if let Err(err) = init {
+                        mcp_log(format!(
+                            "server={} protocol={} initialize failed: {}",
+                            server_name,
+                            protocol_label(protocol),
+                            err
+                        ));
                         let _ = client.close();
                         last_err = Some(err);
                         continue;
                     }
                     let _ = client.notify("notifications/initialized", json!({}));
+                    mcp_log(format!(
+                        "server={} protocol={} initialize ok",
+                        server_name,
+                        protocol_label(protocol)
+                    ));
                     return Ok(client);
                 }
                 Err(err) => {
+                    mcp_log(format!(
+                        "server={} protocol={} spawn/start failed: {}",
+                        server_name,
+                        protocol_label(protocol),
+                        err
+                    ));
                     last_err = Some(err);
                 }
             }
@@ -151,7 +211,18 @@ impl StdioMcpClient {
             })
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::null());
+        mcp_log(format!(
+            "server={} spawn command={} args={:?} cwd={}",
+            server_name,
+            config.command,
+            config.args.clone().unwrap_or_default(),
+            if let Some(custom) = &config.cwd {
+                cwd.join(custom).display().to_string()
+            } else {
+                cwd.display().to_string()
+            }
+        ));
 
         if let Some(envs) = &config.env {
             for (k, v) in envs {
@@ -176,12 +247,20 @@ impl StdioMcpClient {
             .stdout
             .take()
             .ok_or_else(|| anyhow::anyhow!("Failed to capture MCP stdout for {}", server_name))?;
+        let (tx, rx) = mpsc::channel();
+        let reader_handle = Some(Self::spawn_reader_loop(
+            server_name.to_string(),
+            BufReader::new(stdout),
+            protocol,
+            tx,
+        ));
 
         Ok(Self {
             server_name: server_name.to_string(),
             process: child,
             stdin,
-            stdout: BufReader::new(stdout),
+            responses: rx,
+            reader_handle,
             protocol,
             next_id: 1,
         })
@@ -200,6 +279,15 @@ impl StdioMcpClient {
     }
 
     fn request(&mut self, method: &str, params: Value) -> anyhow::Result<Value> {
+        self.request_with_timeout(method, params, MCP_REQUEST_TIMEOUT)
+    }
+
+    fn request_with_timeout(
+        &mut self,
+        method: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> anyhow::Result<Value> {
         let id = self.next_id;
         self.next_id += 1;
         let msg = JsonRpcMessage {
@@ -212,10 +300,46 @@ impl StdioMcpClient {
         };
 
         self.send(&msg)?;
+        mcp_log(format!(
+            "server={} method={} request sent (timeout={}ms)",
+            self.server_name,
+            method,
+            timeout.as_millis()
+        ));
 
+        let deadline = Instant::now() + timeout;
         loop {
-            let reply = self.read_message()?;
+            let now = Instant::now();
+            if now >= deadline {
+                return Err(anyhow::anyhow!(
+                    "MCP {} request timed out for {}",
+                    self.server_name,
+                    method
+                ));
+            }
+            let remaining = deadline.saturating_duration_since(now);
+            let reply = match self.responses.recv_timeout(remaining) {
+                Ok(Ok(message)) => message,
+                Ok(Err(err)) => return Err(err),
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(anyhow::anyhow!(
+                        "MCP {} request timed out for {}",
+                        self.server_name,
+                        method
+                    ));
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(anyhow::anyhow!(
+                        "MCP {} reader disconnected",
+                        self.server_name
+                    ));
+                }
+            };
             if reply.id != Some(id) {
+                mcp_log(format!(
+                    "server={} method={} got unrelated response id={:?}, waiting target id={}",
+                    self.server_name, method, reply.id, id
+                ));
                 continue;
             }
             if let Some(err) = reply.error {
@@ -226,6 +350,10 @@ impl StdioMcpClient {
                     err.message
                 ));
             }
+            mcp_log(format!(
+                "server={} method={} request completed",
+                self.server_name, method
+            ));
             return Ok(reply.result.unwrap_or(Value::Null));
         }
     }
@@ -247,39 +375,94 @@ impl StdioMcpClient {
         Ok(())
     }
 
-    fn read_message(&mut self) -> anyhow::Result<JsonRpcMessage> {
-        match self.protocol {
+    fn spawn_reader_loop(
+        server_name: String,
+        mut stdout: BufReader<ChildStdout>,
+        protocol: JsonRpcProtocol,
+        tx: Sender<anyhow::Result<JsonRpcMessage>>,
+    ) -> JoinHandle<()> {
+        thread::spawn(move || {
+            loop {
+                let result = Self::read_message_from(&server_name, &mut stdout, protocol);
+                match result {
+                    Ok(message) => {
+                        if tx.send(Ok(message)).is_err() {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        let _ = tx.send(Err(err));
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    fn read_message_from(
+        server_name: &str,
+        stdout: &mut BufReader<ChildStdout>,
+        protocol: JsonRpcProtocol,
+    ) -> anyhow::Result<JsonRpcMessage> {
+        match protocol {
             JsonRpcProtocol::NewlineJson => {
                 let mut line = String::new();
-                self.stdout.read_line(&mut line)?;
+                stdout.read_line(&mut line)?;
+                if line.is_empty() {
+                    return Err(anyhow::anyhow!("MCP {} stdout EOF", server_name));
+                }
                 if line.trim().is_empty() {
                     return Err(anyhow::anyhow!(
                         "MCP {} returned empty JSON line",
-                        self.server_name
+                        server_name
                     ));
                 }
-                Ok(serde_json::from_str(line.trim())?)
+                serde_json::from_str(line.trim()).map_err(|err| {
+                    anyhow::anyhow!("MCP {} invalid JSON line: {}", server_name, err)
+                })
             }
             JsonRpcProtocol::ContentLength => {
                 let mut content_length = None::<usize>;
                 loop {
                     let mut line = String::new();
-                    self.stdout.read_line(&mut line)?;
+                    stdout.read_line(&mut line)?;
+                    if line.is_empty() {
+                        return Err(anyhow::anyhow!(
+                            "MCP {} stdout EOF while reading content-length headers",
+                            server_name
+                        ));
+                    }
                     let trimmed = line.trim_end();
+                    if content_length.is_none()
+                        && (trimmed.starts_with('{') || trimmed.starts_with('['))
+                    {
+                        return Err(anyhow::anyhow!(
+                            "MCP {} returned JSON payload before Content-Length header (likely newline-json protocol)",
+                            server_name
+                        ));
+                    }
                     if trimmed.is_empty() {
                         break;
                     }
-                    if let Some(v) = trimmed.strip_prefix("Content-Length:") {
+                    if let Some((name, value)) = trimmed.split_once(':')
+                        && name.trim().eq_ignore_ascii_case("content-length")
+                    {
+                        let v = value.trim();
                         content_length = Some(v.trim().parse::<usize>()?);
                     }
                 }
 
-                let len = content_length.ok_or_else(|| {
-                    anyhow::anyhow!("MCP {} missing content-length", self.server_name)
-                })?;
+                let len = content_length
+                    .ok_or_else(|| anyhow::anyhow!("MCP {} missing content-length", server_name))?;
                 let mut payload = vec![0u8; len];
-                self.stdout.read_exact(&mut payload)?;
-                Ok(serde_json::from_slice(&payload)?)
+                stdout.read_exact(&mut payload)?;
+                serde_json::from_slice(&payload).map_err(|err| {
+                    anyhow::anyhow!(
+                        "MCP {} invalid content-length JSON payload: {}",
+                        server_name,
+                        err
+                    )
+                })
             }
         }
     }
@@ -294,7 +477,7 @@ impl StdioMcpClient {
     }
 
     fn list_resources(&mut self) -> anyhow::Result<Vec<McpResourceDescriptor>> {
-        let result = self.request("resources/list", json!({}))?;
+        let result = self.request_with_timeout("resources/list", json!({}), MCP_LIST_TIMEOUT)?;
         Ok(result
             .get("resources")
             .cloned()
@@ -303,7 +486,7 @@ impl StdioMcpClient {
     }
 
     fn list_prompts(&mut self) -> anyhow::Result<Vec<McpPromptDescriptor>> {
-        let result = self.request("prompts/list", json!({}))?;
+        let result = self.request_with_timeout("prompts/list", json!({}), MCP_LIST_TIMEOUT)?;
         Ok(result
             .get("prompts")
             .cloned()
@@ -343,8 +526,11 @@ impl StdioMcpClient {
     }
 
     fn close(&mut self) -> anyhow::Result<()> {
+        mcp_log(format!("server={} closing process", self.server_name));
         let _ = self.process.kill();
-        let _ = self.process.wait();
+        let _ = self.process.try_wait();
+        let _ = self.reader_handle.take();
+        mcp_log(format!("server={} closed", self.server_name));
         Ok(())
     }
 }
@@ -657,7 +843,29 @@ pub async fn create_mcp_backed_tools(
     let mut prompt_entries: Vec<(String, McpPromptDescriptor)> = vec![];
     let mut closers: Vec<Arc<Mutex<StdioMcpClient>>> = vec![];
 
+    struct ConnectSuccess {
+        server_name: String,
+        config: McpServerConfig,
+        client: StdioMcpClient,
+        tool_descriptors: Vec<McpToolDescriptor>,
+        resources: Vec<McpResourceDescriptor>,
+        prompts: Vec<McpPromptDescriptor>,
+        protocol: String,
+    }
+
+    enum ConnectOutcome {
+        Success(ConnectSuccess),
+        Failure {
+            server_name: String,
+            config: McpServerConfig,
+            error: String,
+        },
+    }
+
+    let mut pending = FuturesUnordered::new();
+
     for (server_name, config) in mcp_servers {
+        mcp_log(format!("bootstrap begin server={}", server_name));
         if config.enabled == Some(false) {
             servers.push(McpServerSummary {
                 name: server_name.clone(),
@@ -672,20 +880,90 @@ pub async fn create_mcp_backed_tools(
             continue;
         }
 
-        match StdioMcpClient::start(server_name, config, cwd) {
-            Ok(mut client) => {
-                let tool_descriptors = client.list_tools().unwrap_or_default();
-                let resources = client.list_resources().unwrap_or_default();
-                let prompts = client.list_prompts().unwrap_or_default();
+        let server_name = server_name.clone();
+        let config = config.clone();
+        let cwd = cwd.to_path_buf();
+        pending.push(async move {
+            let join = tokio::task::spawn_blocking({
+                let server_name = server_name.clone();
+                let config = config.clone();
+                move || -> anyhow::Result<ConnectSuccess> {
+                    let mut client = StdioMcpClient::start(&server_name, &config, &cwd)?;
+                    let protocol = protocol_label(client.protocol).to_string();
+                    mcp_log(format!(
+                        "bootstrap server={} connected protocol={}, listing tools/resources/prompts",
+                        server_name, protocol
+                    ));
+                    let tool_descriptors = client.list_tools().unwrap_or_default();
+                    let resources = client.list_resources().unwrap_or_default();
+                    let prompts = client.list_prompts().unwrap_or_default();
+                    mcp_log(format!(
+                        "bootstrap server={} listed tools={}, resources={}, prompts={}",
+                        server_name,
+                        tool_descriptors.len(),
+                        resources.len(),
+                        prompts.len()
+                    ));
+                    Ok(ConnectSuccess {
+                        server_name,
+                        config,
+                        client,
+                        tool_descriptors,
+                        resources,
+                        prompts,
+                        protocol,
+                    })
+                }
+            });
 
-                let client = Arc::new(Mutex::new(client));
+            match tokio::time::timeout(MCP_STARTUP_TIMEOUT, join).await {
+                Ok(Ok(Ok(success))) => ConnectOutcome::Success(success),
+                Ok(Ok(Err(err))) => ConnectOutcome::Failure {
+                    server_name,
+                    config,
+                    error: err.to_string(),
+                },
+                Ok(Err(err)) => ConnectOutcome::Failure {
+                    server_name,
+                    config,
+                    error: format!("MCP startup task failed: {err}"),
+                },
+                Err(_) => ConnectOutcome::Failure {
+                    server_name,
+                    config,
+                    error: format!(
+                        "MCP startup timed out after {}s (try pre-installing the server package or increasing network speed)",
+                        MCP_STARTUP_TIMEOUT.as_secs(),
+                    ),
+                },
+            }
+        });
+    }
+
+    while let Some(outcome) = pending.next().await {
+        match outcome {
+            ConnectOutcome::Success(success) => {
+                mcp_log(format!(
+                    "bootstrap success server={} tools={} resources={} prompts={}",
+                    success.server_name,
+                    success.tool_descriptors.len(),
+                    success.resources.len(),
+                    success.prompts.len()
+                ));
+                let server_name = success.server_name;
+                let config = success.config;
+                let tool_descriptors = success.tool_descriptors;
+                let resources = success.resources;
+                let prompts = success.prompts;
+                let client = Arc::new(Mutex::new(success.client));
+
                 clients.insert(server_name.clone(), client.clone());
                 closers.push(client.clone());
 
                 for descriptor in &tool_descriptors {
                     let wrapped_name = format!(
                         "mcp__{}__{}",
-                        sanitize_segment(server_name),
+                        sanitize_segment(&server_name),
                         sanitize_segment(&descriptor.name)
                     );
                     tools.push(Arc::new(McpDynamicTool {
@@ -712,27 +990,32 @@ pub async fn create_mcp_backed_tools(
                 }
 
                 servers.push(McpServerSummary {
-                    name: server_name.clone(),
-                    command: config.command.clone(),
+                    name: server_name,
+                    command: config.command,
                     status: "connected".to_string(),
                     tool_count: tool_descriptors.len(),
                     error: None,
-                    protocol: Some(match config.protocol.as_deref() {
-                        Some("newline-json") => "newline-json".to_string(),
-                        _ => "content-length".to_string(),
-                    }),
+                    protocol: Some(success.protocol),
                     resource_count: Some(resources.len()),
                     prompt_count: Some(prompts.len()),
                 });
             }
-            Err(err) => {
+            ConnectOutcome::Failure {
+                server_name,
+                config,
+                error,
+            } => {
+                mcp_log(format!(
+                    "bootstrap failure server={} error={}",
+                    server_name, error
+                ));
                 servers.push(McpServerSummary {
-                    name: server_name.clone(),
-                    command: config.command.clone(),
+                    name: server_name,
+                    command: config.command,
                     status: "error".to_string(),
                     tool_count: 0,
-                    error: Some(err.to_string()),
-                    protocol: config.protocol.clone(),
+                    error: Some(error),
+                    protocol: config.protocol,
                     resource_count: Some(0),
                     prompt_count: Some(0),
                 });

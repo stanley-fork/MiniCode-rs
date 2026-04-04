@@ -136,7 +136,7 @@ pub async fn try_handle_local_command(
     }
 
     if input == "/skills" {
-        let skills = tools.map(|t| t.get_skills()).unwrap_or(&[]);
+        let skills = tools.map(|t| t.get_skills()).unwrap_or_default();
         if skills.is_empty() {
             return Ok(Some("No skills discovered.".to_string()));
         }
@@ -150,7 +150,7 @@ pub async fn try_handle_local_command(
     }
 
     if input == "/mcp" {
-        let servers = tools.map(|t| t.get_mcp_servers()).unwrap_or(&[]);
+        let servers = tools.map(|t| t.get_mcp_servers()).unwrap_or_default();
         if servers.is_empty() {
             return Ok(Some("No MCP servers configured.".to_string()));
         }
