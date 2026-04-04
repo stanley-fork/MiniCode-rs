@@ -578,83 +578,25 @@ async fn run() -> Result<()> {
                     Ok(session) => {
                         eprintln!("✨ 正在加载会话数据...\n");
 
-                        // 恢复消息列表 - 从 serde_json::Value 反序列化回 ChatMessage
+                        // 从会话中提取消息（直接使用 serde_json::Value）
                         let recovered_messages: Vec<ChatMessage> = session
                             .messages
                             .iter()
                             .filter_map(|v| serde_json::from_value::<ChatMessage>(v.clone()).ok())
                             .collect();
 
-                        // 生成可视化的成绩单条目
-                        let mut transcript = Vec::new();
+                        // 将 ChatMessage 列表转换为可视化的成绩单条目
+                        let transcript_lines =
+                            minicode_history::render_recovered_messages(&recovered_messages);
 
-                        // 将所有消息转换为可视化条目
-                        for msg in &recovered_messages {
-                            match msg {
-                                ChatMessage::System { .. } => {}
-                                ChatMessage::User { content } => {
-                                    transcript.push(TranscriptEntry {
-                                        kind: "user".to_string(),
-                                        body: content.clone(),
-                                    });
-                                }
-                                ChatMessage::Assistant { content } => {
-                                    transcript.push(TranscriptEntry {
-                                        kind: "assistant".to_string(),
-                                        body: content.clone(),
-                                    });
-                                }
-                                ChatMessage::AssistantProgress { content } => {
-                                    transcript.push(TranscriptEntry {
-                                        kind: "progress".to_string(),
-                                        body: content.clone(),
-                                    });
-                                }
-                                ChatMessage::AssistantToolCall {
-                                    tool_use_id,
-                                    tool_name,
-                                    input,
-                                } => {
-                                    transcript.push(TranscriptEntry {
-                                        kind: "tool_call".to_string(),
-                                        body: format!(
-                                            "🔧 工具调用: {} (ID: {})\n输入: {}",
-                                            tool_name, tool_use_id, input
-                                        ),
-                                    });
-                                }
-                                ChatMessage::ToolResult {
-                                    tool_use_id,
-                                    tool_name,
-                                    content,
-                                    is_error,
-                                } => {
-                                    let prefix = if *is_error {
-                                        "❌ 工具错误"
-                                    } else {
-                                        "✅ 工具结果"
-                                    };
-                                    transcript.push(TranscriptEntry {
-                                        kind: if *is_error {
-                                            "tool_error"
-                                        } else {
-                                            "tool_result"
-                                        }
-                                        .to_string(),
-                                        body: format!(
-                                            "{}: {} (ID: {})\n结果: {}",
-                                            prefix, tool_name, tool_use_id, content
-                                        ),
-                                    });
-                                }
-                            }
-                        }
-
-                        transcript.push(TranscriptEntry {
-                            kind: "system".to_string(),
-                            body: "─".repeat(60).to_string()
-                                + "\n✨ 历史记录加载完毕，现在可以继续对话",
-                        });
+                        // 转换为 TranscriptEntry 格式
+                        let transcript = transcript_lines
+                            .into_iter()
+                            .map(|line| TranscriptEntry {
+                                kind: line.kind,
+                                body: line.body,
+                            })
+                            .collect();
 
                         (resume_id, recovered_messages, transcript)
                     }

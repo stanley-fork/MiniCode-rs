@@ -4,9 +4,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use minicode_config::{
-    project_session_metadata_path, project_session_conversation_path,
-    project_sessions_index, project_sessions_dir,
+    project_session_conversation_path, project_session_metadata_path, project_sessions_dir,
+    project_sessions_index,
 };
+use minicode_types::{ChatMessage, TranscriptLine};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
@@ -74,7 +75,7 @@ pub fn generate_session_id() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionMetadata {
     pub session_id: String,
-    pub created_at: String,           // ISO 8601
+    pub created_at: String, // ISO 8601
     pub ended_at: Option<String>,
     pub duration_seconds: u64,
     pub model: Option<String>,
@@ -83,20 +84,20 @@ pub struct SessionMetadata {
     pub user_input_count: usize,
     pub tool_call_count: usize,
     #[serde(default)]
-    pub status: String,               // "active", "completed"
+    pub status: String, // "active", "completed"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnRecord {
     pub turn_id: String,
     pub turn_number: usize,
-    pub timestamp: String,            // ISO 8601
-    pub input_type: String,           // "user", "tool", "system"
+    pub timestamp: String,  // ISO 8601
+    pub input_type: String, // "user", "tool", "system"
     pub input: String,
     #[serde(default)]
     pub tools_used: Vec<String>,
     pub duration_ms: u64,
-    pub status: String,               // "success", "error"
+    pub status: String, // "success", "error"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,8 +162,7 @@ fn update_session_index(cwd: &Path, metadata: &SessionMetadata) -> Result<()> {
     let index_path = project_sessions_index(cwd);
     let mut index: SessionIndex = if index_path.exists() {
         let content = fs::read_to_string(&index_path)?;
-        serde_json::from_str(&content)
-            .unwrap_or_else(|_| SessionIndex { sessions: vec![] })
+        serde_json::from_str(&content).unwrap_or_else(|_| SessionIndex { sessions: vec![] })
     } else {
         SessionIndex { sessions: vec![] }
     };
@@ -189,7 +189,9 @@ fn update_session_index(cwd: &Path, metadata: &SessionMetadata) -> Result<()> {
     }
 
     // Sort by created_at descending (most recent first)
-    index.sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    index
+        .sessions
+        .sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
     if let Some(parent) = index_path.parent() {
         fs::create_dir_all(parent)?;
@@ -241,4 +243,72 @@ pub fn load_session(cwd: &Path, session_id: &str) -> Result<SessionRecord> {
         messages,
         turns,
     })
+}
+
+/// Convert ChatMessage list to visible transcript lines for session recovery
+pub fn render_recovered_messages(messages: &[ChatMessage]) -> Vec<TranscriptLine> {
+    let mut transcript = Vec::new();
+
+    for msg in messages {
+        match msg {
+            ChatMessage::System { .. } => {}
+            ChatMessage::User { content } => {
+                transcript.push(TranscriptLine {
+                    kind: "user".to_string(),
+                    body: content.clone(),
+                });
+            }
+            ChatMessage::Assistant { content } => {
+                transcript.push(TranscriptLine {
+                    kind: "assistant".to_string(),
+                    body: content.clone(),
+                });
+            }
+            ChatMessage::AssistantProgress { content } => {
+                transcript.push(TranscriptLine {
+                    kind: "progress".to_string(),
+                    body: content.clone(),
+                });
+            }
+            ChatMessage::AssistantToolCall {
+                tool_use_id,
+                tool_name,
+                input,
+            } => {
+                transcript.push(TranscriptLine {
+                    kind: "tool_call".to_string(),
+                    body: format!(
+                        "🔧 工具调用: {} (ID: {})\n输入: {}",
+                        tool_name, tool_use_id, input
+                    ),
+                });
+            }
+            ChatMessage::ToolResult {
+                tool_use_id,
+                tool_name,
+                content,
+                is_error,
+            } => {
+                let prefix = if *is_error {
+                    "❌ 工具错误"
+                } else {
+                    "✅ 工具结果"
+                };
+                transcript.push(TranscriptLine {
+                    kind: if *is_error {
+                        "tool_error"
+                    } else {
+                        "tool_result"
+                    }
+                    .to_string(),
+                    body: format!(
+                        "{}: {} (ID: {})\n结果: {}",
+                        prefix, tool_name, tool_use_id, content
+                    ),
+                });
+            }
+        }
+    }
+
+    transcript
 }
