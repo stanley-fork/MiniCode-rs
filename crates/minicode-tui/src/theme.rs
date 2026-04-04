@@ -38,23 +38,24 @@ pub struct ColorTheme {
 impl Default for ColorTheme {
     fn default() -> Self {
         Self {
-            header: Color::LightCyan,
-            session: Color::Blue,
-            input: Color::Green,
-            approval: Color::LightRed,
-            user: Color::Cyan,
-            assistant: Color::Green,
-            progress: Color::Yellow,
-            tool: Color::Magenta,
-            tool_error: Color::Red,
-            command_highlight: Color::Rgb(30, 50, 80),
-            expandable: Color::LightCyan,
-            header_label_project: Color::Cyan,
-            header_label_provider: Color::LightBlue,
-            header_label_model: Color::Green,
-            header_label_auth: Color::LightYellow,
-            header_label_session: Color::Yellow,
-            header_label_permissions: Color::LightMagenta,
+            // Morandi color palette (higher saturation version)
+            header: Color::Rgb(120, 150, 140),     // Muted teal
+            session: Color::Rgb(140, 120, 160),    // Muted purple
+            input: Color::Rgb(130, 160, 100),      // Muted sage green
+            approval: Color::Rgb(170, 110, 110),   // Muted mauve
+            user: Color::Rgb(160, 130, 100),       // Muted warm brown
+            assistant: Color::Rgb(100, 150, 150),  // Muted teal-cyan
+            progress: Color::Rgb(170, 150, 90),    // Muted mustard
+            tool: Color::Rgb(140, 100, 160),       // Muted purple-plum
+            tool_error: Color::Rgb(180, 100, 100), // Muted rose
+            command_highlight: Color::Rgb(100, 110, 140), // Muted slate-blue
+            expandable: Color::Rgb(110, 150, 150), // Muted cyan-gray
+            header_label_project: Color::Rgb(110, 150, 140), // Muted teal
+            header_label_provider: Color::Rgb(150, 110, 170), // Muted lilac
+            header_label_model: Color::Rgb(140, 160, 100), // Muted green
+            header_label_auth: Color::Rgb(170, 150, 100), // Muted ochre
+            header_label_session: Color::Rgb(160, 120, 100), // Muted terracotta
+            header_label_permissions: Color::Rgb(130, 100, 160), // Muted plum
         }
     }
 }
@@ -149,6 +150,13 @@ impl ColorTheme {
 
     /// Get style for header permissions label
     pub fn header_label_permissions_style(&self) -> Style {
+        Style::default()
+            .fg(self.header_label_permissions)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    /// Get style for header recent label
+    pub fn header_label_recent_style(&self) -> Style {
         Style::default()
             .fg(self.header_label_permissions)
             .add_modifier(Modifier::BOLD)

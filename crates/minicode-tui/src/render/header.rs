@@ -1,4 +1,5 @@
 use minicode_permissions::session_permissions;
+use minicode_types::PermissionSummaryItem;
 use ratatui::text::{Line, Span};
 
 use crate::state::{ScreenState, TuiAppArgs};
@@ -82,17 +83,41 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
                 mcp_count,
                 running_tasks,
             )),
-            Span::raw(" | local"),
         ]),
-        Line::from(vec![
-            Span::styled("permissions", theme.header_label_permissions_style()),
-            Span::raw(" "),
-            Span::raw(session_permissions().get_summary().join(" | ")),
-            if recent.is_empty() {
-                Span::raw("")
-            } else {
-                Span::raw(format!(" | recent={}", recent))
-            },
-        ]),
+        Line::from({
+            let mut line = Vec::new();
+            line.push(Span::styled(
+                "permissions",
+                theme.header_label_permissions_style(),
+            ));
+            line.push(Span::raw(" "));
+            let permissions_summary = session_permissions().get_summary();
+            for item in permissions_summary {
+                match item {
+                    PermissionSummaryItem::Cwd(cwd) => {
+                        line.push(Span::styled("cwd", theme.expandable_style()));
+                        line.push(Span::raw(format!(" {}", cwd)));
+                    }
+                    PermissionSummaryItem::ExtraAllowDirs(items) => {
+                        line.push(Span::styled("extra allow dirs", theme.expandable_style()));
+                        line.push(Span::raw(format!(" {}", items.join(", "))));
+                    }
+                    PermissionSummaryItem::DangerousAllowDirs(items) => {
+                        line.push(Span::styled(
+                            "dangerous allowlist",
+                            theme.expandable_style(),
+                        ));
+                        line.push(Span::raw(format!(" {}", items.join(", "))));
+                    }
+                }
+            }
+
+            if !recent.is_empty() {
+                line.push(Span::styled("recent", theme.header_label_recent_style()));
+                line.push(Span::raw(format!(" {}", recent)));
+            }
+
+            line
+        }),
     ]
 }

@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -81,4 +83,34 @@ pub trait ModelAdapter: Send + Sync {
 pub struct TranscriptLine {
     pub kind: String,
     pub body: String,
+}
+
+/// Represents the current permissions summary for the session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PermissionSummaryItem {
+    Cwd(String),
+    ExtraAllowDirs(Vec<String>),
+    DangerousAllowDirs(Vec<String>),
+}
+
+impl Display for PermissionSummaryItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PermissionSummaryItem::Cwd(cwd) => write!(f, "cwd: {}", cwd),
+            PermissionSummaryItem::ExtraAllowDirs(dirs) => {
+                if dirs.is_empty() {
+                    write!(f, "extra allowed dirs: none")
+                } else {
+                    write!(f, "extra allowed dirs: {}", dirs.join(", "))
+                }
+            }
+            PermissionSummaryItem::DangerousAllowDirs(cmds) => {
+                if cmds.is_empty() {
+                    write!(f, "dangerous allowlist: none")
+                } else {
+                    write!(f, "dangerous allowlist: {}", cmds.join(", "))
+                }
+            }
+        }
+    }
 }

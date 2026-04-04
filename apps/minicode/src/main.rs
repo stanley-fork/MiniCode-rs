@@ -116,7 +116,7 @@ async fn launch_tui_app(
         vec![ChatMessage::System {
             content: build_system_prompt(
                 cwd.as_ref(),
-                &permissions.get_summary(),
+                &permissions.get_summary_text(),
                 &skills,
                 &mcp_servers,
             ),

@@ -1,3 +1,4 @@
+use minicode_types::PermissionSummaryItem;
 use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
@@ -211,15 +212,18 @@ impl PermissionManager {
     }
 
     /// 返回权限状态的简要摘要文本。
-    pub fn get_summary(&self) -> Vec<String> {
+    pub fn get_summary(&self) -> Vec<PermissionSummaryItem> {
+        let mut output = Vec::new();
         let state = self.state.try_lock().ok();
-        let mut summary = vec![format!("cwd: {}", self.workspace_root.display())];
+        output.push(PermissionSummaryItem::Cwd(
+            self.workspace_root.display().to_string(),
+        ));
         let empty_dirs = state
             .as_ref()
             .map(|x| x.allowed_directory_prefixes.is_empty())
             .unwrap_or(true);
         if empty_dirs {
-            summary.push("extra allowed dirs: none".to_string());
+            output.push(PermissionSummaryItem::ExtraAllowDirs(Vec::new()));
         } else {
             let dirs = state
                 .as_ref()
@@ -231,14 +235,14 @@ impl PermissionManager {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            summary.push(format!("extra allowed dirs: {}", dirs.join(", ")));
+            output.push(PermissionSummaryItem::ExtraAllowDirs(dirs));
         }
         let empty_cmds = state
             .as_ref()
             .map(|x| x.allowed_command_patterns.is_empty())
             .unwrap_or(true);
         if empty_cmds {
-            summary.push("dangerous allowlist: none".to_string());
+            output.push(PermissionSummaryItem::DangerousAllowDirs(Vec::new()));
         } else {
             let cmds = state
                 .as_ref()
@@ -250,9 +254,16 @@ impl PermissionManager {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            summary.push(format!("dangerous allowlist: {}", cmds.join(", ")));
+            output.push(PermissionSummaryItem::DangerousAllowDirs(cmds));
         }
-        summary
+        output
+    }
+
+    pub fn get_summary_text(&self) -> Vec<String> {
+        self.get_summary()
+            .into_iter()
+            .map(|item| item.to_string())
+            .collect()
     }
 
     /// 校验路径访问权限，必要时触发审批。
