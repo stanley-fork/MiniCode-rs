@@ -7,9 +7,9 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1"
-minicode-skills = { path = "../minicode-skills" }
-serde_json = "1"
+anyhow = { workspace = true }
+minicode-skills = { workspace = true }
+serde_json = { workspace = true }
 minicode-config = { workspace = true }
 
 [lints]

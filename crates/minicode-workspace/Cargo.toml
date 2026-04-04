@@ -7,7 +7,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 minicode-tool = { workspace = true }
 
 [lints]

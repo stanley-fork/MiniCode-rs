@@ -7,8 +7,8 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1"
-async-trait = "0.1"
+anyhow = { workspace = true }
+async-trait = { workspace = true }
 minicode-background-tasks = { workspace = true }
 minicode-config = { workspace = true }
 minicode-file-review = { workspace = true }
@@ -17,10 +17,10 @@ minicode-permissions = { workspace = true }
 minicode-skills = { workspace = true }
 minicode-tool = { workspace = true }
 minicode-workspace = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
 shell-words = "1"
-tokio = { version = "1", features = ["process", "rt", "time"] }
+tokio = { workspace = true, features = ["process", "rt", "time"] }
 
 [lints]
 workspace = true

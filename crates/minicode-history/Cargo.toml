@@ -7,11 +7,11 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1"
+anyhow = { workspace = true }
 minicode-config = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-uuid = { version = "1", features = ["v4"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 minicode-types = { workspace = true }
 
 [lints]

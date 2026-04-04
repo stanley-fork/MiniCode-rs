@@ -7,8 +7,8 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1"
-dirs = "6"
+anyhow = { workspace = true }
+dirs = { workspace = true }
 minicode-prompt = { workspace = true }
 
 [lints]
