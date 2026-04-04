@@ -13,20 +13,18 @@ use minicode_permissions::{
 use minicode_prompt::build_system_prompt;
 use minicode_shortcuts::parse_local_tool_shortcut;
 use minicode_tool::ToolContext;
-use minicode_types::ChatMessage;
+use minicode_types::{ChatMessage, TranscriptLine};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::input::{scroll_transcript_by, toggle_tool_details};
 use crate::render::render_screen;
-use crate::state::{
-    ChannelCallbacks, PendingApproval, ScreenState, TranscriptEntry, TuiAppArgs, TurnEvent,
-};
+use crate::state::{ChannelCallbacks, PendingApproval, ScreenState, TuiAppArgs, TurnEvent};
 
 /// 向会话转录中写入一条错误消息并更新状态。
 fn push_error_to_session(state: &mut ScreenState, message: impl Into<String>) {
-    state.transcript.push(TranscriptEntry {
+    state.transcript.push(TranscriptLine {
         kind: "tool:error".to_string(),
         body: message.into(),
     });
@@ -51,7 +49,7 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
         TurnEvent::ToolStart { tool_name, input } => {
             state.active_tool = Some(tool_name.clone());
             state.status = Some(format!("Running {tool_name}..."));
-            state.transcript.push(TranscriptEntry {
+            state.transcript.push(TranscriptLine {
                 kind: "tool".to_string(),
                 body: format!(
                     "{}\n{}",
@@ -68,7 +66,7 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
             is_error,
         } => {
             state.recent_tools.push((tool_name, !is_error));
-            state.transcript.push(TranscriptEntry {
+            state.transcript.push(TranscriptLine {
                 kind: if is_error {
                     "tool:error".to_string()
                 } else {
@@ -80,7 +78,7 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
             None
         }
         TurnEvent::Assistant(content) => {
-            state.transcript.push(TranscriptEntry {
+            state.transcript.push(TranscriptLine {
                 kind: "assistant".to_string(),
                 body: content,
             });
@@ -88,7 +86,7 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
             None
         }
         TurnEvent::Progress(content) => {
-            state.transcript.push(TranscriptEntry {
+            state.transcript.push(TranscriptLine {
                 kind: "progress".to_string(),
                 body: content,
             });
@@ -114,7 +112,7 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
                     .unwrap_or_else(|| "tool".to_string()),
                 result.ok,
             ));
-            state.transcript.push(TranscriptEntry {
+            state.transcript.push(TranscriptLine {
                 kind: if result.ok {
                     "tool".to_string()
                 } else {
@@ -361,7 +359,7 @@ pub(crate) async fn handle_submit(
     state.history_draft.clear();
 
     if input == "/tools" {
-        state.transcript.push(TranscriptEntry {
+        state.transcript.push(TranscriptLine {
             kind: "assistant".to_string(),
             body: args
                 .tools
@@ -376,7 +374,7 @@ pub(crate) async fn handle_submit(
 
     match try_handle_local_command(&input, &args.cwd, Some(&args.tools)).await {
         Ok(Some(local)) => {
-            state.transcript.push(TranscriptEntry {
+            state.transcript.push(TranscriptLine {
                 kind: "assistant".to_string(),
                 body: local,
             });
@@ -436,7 +434,7 @@ pub(crate) async fn handle_submit(
 
     if input.starts_with('/') {
         let matches = find_matching_slash_commands(&input);
-        state.transcript.push(TranscriptEntry {
+        state.transcript.push(TranscriptLine {
             kind: "assistant".to_string(),
             body: if matches.is_empty() {
                 "未识别命令。输入 /help 查看可用命令。".to_string()
@@ -455,7 +453,7 @@ pub(crate) async fn handle_submit(
     messages.push(ChatMessage::User {
         content: input.clone(),
     });
-    state.transcript.push(TranscriptEntry {
+    state.transcript.push(TranscriptLine {
         kind: "user".to_string(),
         body: input,
     });

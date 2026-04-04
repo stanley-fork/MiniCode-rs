@@ -50,9 +50,12 @@ fn active_session_cell() -> &'static Mutex<Option<ActiveSessionContext>> {
 }
 
 /// 设置当前进程内的活动会话上下文。
-pub fn set_active_session_context(cwd: PathBuf, session_id: String) {
+pub fn set_active_session_context(cwd: impl AsRef<Path>, session_id: String) {
     if let Ok(mut slot) = active_session_cell().try_lock() {
-        *slot = Some(ActiveSessionContext { cwd, session_id });
+        *slot = Some(ActiveSessionContext {
+            cwd: cwd.as_ref().into(),
+            session_id,
+        });
     }
 }
 
@@ -99,47 +102,47 @@ pub fn claude_settings_path() -> PathBuf {
 }
 
 /// 返回项目级 MCP 配置路径。
-pub fn project_mcp_path(cwd: &Path) -> PathBuf {
-    cwd.join(".mcp.json")
+pub fn project_mcp_path(cwd: impl AsRef<Path>) -> PathBuf {
+    cwd.as_ref().join(".mcp.json")
 }
 
 /// 返回项目级会话目录: .mini-code/sessions/
-pub fn project_sessions_dir(cwd: &Path) -> PathBuf {
-    cwd.join(".mini-code/sessions")
+pub fn project_sessions_dir(cwd: impl AsRef<Path>) -> PathBuf {
+    cwd.as_ref().join(".mini-code/sessions")
 }
 
 /// 返回特定会话目录: .mini-code/sessions/{session_id}/
-pub fn project_session_dir(cwd: &Path, session_id: &str) -> PathBuf {
+pub fn project_session_dir(cwd: impl AsRef<Path>, session_id: &str) -> PathBuf {
     project_sessions_dir(cwd).join(session_id)
 }
 
 /// 返回会话索引路径: .mini-code/sessions/index.json
-pub fn project_sessions_index(cwd: &Path) -> PathBuf {
+pub fn project_sessions_index(cwd: impl AsRef<Path>) -> PathBuf {
     project_sessions_dir(cwd).join("index.json")
 }
 
 /// 返回会话元数据路径: .mini-code/sessions/{session_id}/metadata.json
-pub fn project_session_metadata_path(cwd: &Path, session_id: &str) -> PathBuf {
+pub fn project_session_metadata_path(cwd: impl AsRef<Path>, session_id: &str) -> PathBuf {
     project_session_dir(cwd, session_id).join("metadata.json")
 }
 
 /// 返回会话对话历史路径: .mini-code/sessions/{session_id}/conversation.json
-pub fn project_session_conversation_path(cwd: &Path, session_id: &str) -> PathBuf {
+pub fn project_session_conversation_path(cwd: impl AsRef<Path>, session_id: &str) -> PathBuf {
     project_session_dir(cwd, session_id).join("conversation.json")
 }
 
 /// 返回会话权限文件路径: .mini-code/sessions/{session_id}/permissions.json
-pub fn project_session_permissions_path(cwd: &Path, session_id: &str) -> PathBuf {
+pub fn project_session_permissions_path(cwd: impl AsRef<Path>, session_id: &str) -> PathBuf {
     project_session_dir(cwd, session_id).join("permissions.json")
 }
 
 /// 返回当前会话文件路径: .mini-code/current_session.json
-pub fn project_current_session_path(cwd: &Path) -> PathBuf {
-    cwd.join(".mini-code/current_session.json")
+pub fn project_current_session_path(cwd: impl AsRef<Path>) -> PathBuf {
+    cwd.as_ref().join(".mini-code/current_session.json")
 }
 
 /// 读取 JSON 文件，不存在时返回默认值。
-fn read_json_file<T: for<'de> Deserialize<'de> + Default>(path: &Path) -> Result<T> {
+fn read_json_file<T: for<'de> Deserialize<'de> + Default>(path: impl AsRef<Path>) -> Result<T> {
     match fs::read_to_string(path) {
         Ok(content) => Ok(serde_json::from_str(&content)?),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(T::default()),
@@ -172,19 +175,19 @@ struct McpConfigFile {
 }
 
 /// 读取指定路径中的 MCP 服务器配置表。
-fn read_mcp_servers(path: &Path) -> Result<HashMap<String, McpServerConfig>> {
+fn read_mcp_servers(path: impl AsRef<Path>) -> Result<HashMap<String, McpServerConfig>> {
     Ok(read_json_file::<McpConfigFile>(path)?.mcp_servers)
 }
 
 /// 按优先级加载并合并最终生效设置。
-pub fn load_effective_settings(cwd: &Path) -> Result<MiniCodeSettings> {
+pub fn load_effective_settings(cwd: impl AsRef<Path>) -> Result<MiniCodeSettings> {
     let claude = read_json_file::<MiniCodeSettings>(&claude_settings_path())?;
     let global_mcp = MiniCodeSettings {
-        mcp_servers: Some(read_mcp_servers(&mini_code_mcp_path())?),
+        mcp_servers: Some(read_mcp_servers(mini_code_mcp_path())?),
         ..MiniCodeSettings::default()
     };
     let project_mcp = MiniCodeSettings {
-        mcp_servers: Some(read_mcp_servers(&project_mcp_path(cwd))?),
+        mcp_servers: Some(read_mcp_servers(project_mcp_path(cwd))?),
         ..MiniCodeSettings::default()
     };
     let mini = read_json_file::<MiniCodeSettings>(&mini_code_settings_path())?;
@@ -211,7 +214,7 @@ pub fn save_minicode_settings(updates: MiniCodeSettings) -> Result<()> {
 }
 
 /// 从配置与环境变量构建运行时配置。
-pub fn load_runtime_config(cwd: &Path) -> Result<RuntimeConfig> {
+pub fn load_runtime_config(cwd: impl AsRef<Path>) -> Result<RuntimeConfig> {
     let effective = load_effective_settings(cwd)?;
     let mut env = std::env::vars().collect::<HashMap<_, _>>();
     if let Some(extra) = &effective.env {
@@ -269,7 +272,7 @@ pub fn load_runtime_config(cwd: &Path) -> Result<RuntimeConfig> {
 /// 读取指定作用域（user/project）的 MCP 服务器配置。
 pub fn load_scoped_mcp_servers(
     scope: &str,
-    cwd: &Path,
+    cwd: impl AsRef<Path>,
 ) -> Result<HashMap<String, McpServerConfig>> {
     let path = if scope == "project" {
         project_mcp_path(cwd)
@@ -282,7 +285,7 @@ pub fn load_scoped_mcp_servers(
 /// 保存指定作用域（user/project）的 MCP 服务器配置。
 pub fn save_scoped_mcp_servers(
     scope: &str,
-    cwd: &Path,
+    cwd: impl AsRef<Path>,
     servers: HashMap<String, McpServerConfig>,
 ) -> Result<()> {
     let path = if scope == "project" {

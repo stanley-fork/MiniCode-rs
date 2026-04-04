@@ -9,12 +9,12 @@ use minicode_config::{
 use minicode_skills::{discover_skills, install_skill, remove_managed_skill};
 
 /// 列出 MCP 服务
-pub async fn list_mcp_servers(cwd: &Path, scope: &str) -> Result<bool> {
-    let servers = load_scoped_mcp_servers(scope, cwd)?;
+pub async fn list_mcp_servers(cwd: impl AsRef<Path>, scope: &str) -> Result<bool> {
+    let servers = load_scoped_mcp_servers(scope, cwd.as_ref())?;
 
     if servers.is_empty() {
         let path = if scope == "project" {
-            project_mcp_path(cwd)
+            project_mcp_path(cwd.as_ref())
         } else {
             mini_code_mcp_path()
         };
@@ -37,7 +37,7 @@ pub async fn list_mcp_servers(cwd: &Path, scope: &str) -> Result<bool> {
 
 /// 添加 MCP 服务
 pub async fn add_mcp_server(
-    cwd: &Path,
+    cwd: impl AsRef<Path>,
     scope: &str,
     name: String,
     protocol: Option<String>,
@@ -48,7 +48,7 @@ pub async fn add_mcp_server(
         return Err(anyhow!("Missing MCP command"));
     }
 
-    let mut existing = load_scoped_mcp_servers(scope, cwd)?;
+    let mut existing = load_scoped_mcp_servers(scope, cwd.as_ref())?;
     existing.insert(
         name.clone(),
         McpServerConfig {
@@ -69,27 +69,27 @@ pub async fn add_mcp_server(
         },
     );
 
-    save_scoped_mcp_servers(scope, cwd, existing)?;
+    save_scoped_mcp_servers(scope, cwd.as_ref(), existing)?;
     println!("Added MCP server {}", name);
     Ok(true)
 }
 
 /// 移除 MCP 服务
-pub async fn remove_mcp_server(cwd: &Path, scope: &str, name: String) -> Result<bool> {
-    let mut existing = load_scoped_mcp_servers(scope, cwd)?;
+pub async fn remove_mcp_server(cwd: impl AsRef<Path>, scope: &str, name: String) -> Result<bool> {
+    let mut existing = load_scoped_mcp_servers(scope, cwd.as_ref())?;
 
     if existing.remove(&name).is_none() {
         println!("MCP server {} not found", name);
         return Ok(true);
     }
 
-    save_scoped_mcp_servers(scope, cwd, existing)?;
+    save_scoped_mcp_servers(scope, cwd.as_ref(), existing)?;
     println!("Removed MCP server {}", name);
     Ok(true)
 }
 
 /// 列出技能
-pub async fn list_skills(cwd: &Path) -> Result<bool> {
+pub async fn list_skills(cwd: impl AsRef<Path>) -> Result<bool> {
     let skills = discover_skills(cwd);
     if skills.is_empty() {
         println!("No skills discovered.");
@@ -104,7 +104,7 @@ pub async fn list_skills(cwd: &Path) -> Result<bool> {
 
 /// 安装技能
 pub async fn add_skill(
-    cwd: &Path,
+    cwd: impl AsRef<Path>,
     scope: &str,
     path: String,
     name: Option<String>,
@@ -115,7 +115,7 @@ pub async fn add_skill(
 }
 
 /// 移除技能
-pub async fn remove_skill(cwd: &Path, scope: &str, name: String) -> Result<bool> {
+pub async fn remove_skill(cwd: impl AsRef<Path>, scope: &str, name: String) -> Result<bool> {
     let (removed, target) = remove_managed_skill(cwd, &name, scope)?;
 
     if !removed {

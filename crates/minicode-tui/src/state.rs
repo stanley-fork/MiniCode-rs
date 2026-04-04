@@ -10,8 +10,6 @@ use minicode_tool::{ToolRegistry, ToolResult};
 use minicode_types::{ChatMessage, ModelAdapter, TranscriptLine};
 use tokio::sync::{mpsc, oneshot};
 
-pub type TranscriptEntry = TranscriptLine;
-
 pub(crate) struct PendingApproval {
     pub(crate) request: PermissionPromptRequest,
     pub(crate) responder: Option<oneshot::Sender<PermissionPromptResult>>,
@@ -43,7 +41,7 @@ pub(crate) enum TurnEvent {
 pub(crate) struct ScreenState {
     pub(crate) input: String,
     pub(crate) cursor_offset: usize,
-    pub(crate) transcript: Vec<TranscriptEntry>,
+    pub(crate) transcript: Vec<TranscriptLine>,
     pub(crate) transcript_scroll_offset: usize,
     pub(crate) session_max_scroll_offset: usize,
     pub(crate) expanded_tool_entries: HashSet<usize>,

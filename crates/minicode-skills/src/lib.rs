@@ -31,18 +31,24 @@ fn extract_description(markdown: &str) -> String {
 }
 
 /// 返回技能搜索根目录及其来源标签。
-fn skill_roots(cwd: &Path) -> Vec<(PathBuf, String)> {
+fn skill_roots(cwd: impl AsRef<Path>) -> Vec<(PathBuf, String)> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     vec![
-        (cwd.join(".mini-code/skills"), "project".to_string()),
+        (
+            cwd.as_ref().join(".mini-code/skills"),
+            "project".to_string(),
+        ),
         (home.join(".mini-code/skills"), "user".to_string()),
-        (cwd.join(".claude/skills"), "compat_project".to_string()),
+        (
+            cwd.as_ref().join(".claude/skills"),
+            "compat_project".to_string(),
+        ),
         (home.join(".claude/skills"), "compat_user".to_string()),
     ]
 }
 
 /// 扫描并返回当前可用技能摘要。
-pub fn discover_skills(cwd: &Path) -> Vec<SkillSummary> {
+pub fn discover_skills(cwd: impl AsRef<Path>) -> Vec<SkillSummary> {
     let mut by_name: HashMap<String, SkillSummary> = HashMap::new();
     for (root, source) in skill_roots(cwd) {
         let Ok(entries) = fs::read_dir(root) else {
@@ -79,7 +85,7 @@ pub fn discover_skills(cwd: &Path) -> Vec<SkillSummary> {
 }
 
 /// 按名称加载技能全文与元信息。
-pub fn load_skill(cwd: &Path, name: &str) -> Option<LoadedSkill> {
+pub fn load_skill(cwd: impl AsRef<Path>, name: &str) -> Option<LoadedSkill> {
     let normalized = name.trim();
     if normalized.is_empty() {
         return None;
@@ -102,12 +108,12 @@ pub fn load_skill(cwd: &Path, name: &str) -> Option<LoadedSkill> {
 
 /// 将外部技能安装到用户或项目作用域。
 pub fn install_skill(
-    cwd: &Path,
+    cwd: impl AsRef<Path>,
     source_path: &str,
     name: Option<String>,
     scope: &str,
 ) -> Result<(String, String)> {
-    let source = cwd.join(source_path);
+    let source = cwd.as_ref().join(source_path);
     let (content, inferred_name) = if source.is_dir() {
         let skill_file = source.join("SKILL.md");
         (
@@ -137,7 +143,7 @@ pub fn install_skill(
     }
 
     let root = if scope == "project" {
-        cwd.join(".mini-code/skills")
+        cwd.as_ref().join(".mini-code/skills")
     } else {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -153,9 +159,13 @@ pub fn install_skill(
 }
 
 /// 删除托管技能目录并返回删除结果。
-pub fn remove_managed_skill(cwd: &Path, name: &str, scope: &str) -> Result<(bool, String)> {
+pub fn remove_managed_skill(
+    cwd: impl AsRef<Path>,
+    name: &str,
+    scope: &str,
+) -> Result<(bool, String)> {
     let root = if scope == "project" {
-        cwd.join(".mini-code/skills")
+        cwd.as_ref().join(".mini-code/skills")
     } else {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))

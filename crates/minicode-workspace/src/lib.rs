@@ -30,15 +30,21 @@ pub async fn resolve_tool_path(
 }
 
 /// 确保路径没有逃逸出当前工作区目录。
-fn ensure_inside_workspace(root: &Path, resolved: &Path) -> Result<()> {
-    let Ok(relative) = resolved.strip_prefix(root) else {
-        return Err(anyhow!("Path escapes workspace: {}", resolved.display()));
+fn ensure_inside_workspace(root: impl AsRef<Path>, resolved: impl AsRef<Path>) -> Result<()> {
+    let Ok(relative) = resolved.as_ref().strip_prefix(root.as_ref()) else {
+        return Err(anyhow!(
+            "Path escapes workspace: {}",
+            resolved.as_ref().display()
+        ));
     };
     if relative
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))
     {
-        return Err(anyhow!("Path escapes workspace: {}", resolved.display()));
+        return Err(anyhow!(
+            "Path escapes workspace: {}",
+            resolved.as_ref().display()
+        ));
     }
     Ok(())
 }

@@ -1,8 +1,9 @@
+use minicode_types::TranscriptLine;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::state::{ScreenState, TranscriptEntry};
+use crate::state::ScreenState;
 use crate::theme::theme;
 
 use super::ui_utils::sanitize_line;
@@ -27,7 +28,7 @@ fn truncate_chars(value: &str, max_chars: usize) -> String {
 }
 
 /// 判断该转录条目是否属于工具输出。
-fn is_tool_entry(entry: &TranscriptEntry) -> bool {
+fn is_tool_entry(entry: &TranscriptLine) -> bool {
     entry.kind == "tool" || entry.kind == "tool:error"
 }
 

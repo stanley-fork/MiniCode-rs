@@ -20,12 +20,12 @@ struct HistoryFile {
     entries: Vec<String>,
 }
 
-fn session_history_path(cwd: &Path, session_id: &str) -> std::path::PathBuf {
+fn session_history_path(cwd: impl AsRef<Path>, session_id: &str) -> std::path::PathBuf {
     project_session_dir(cwd, session_id).join("input_history.json")
 }
 
 /// 加载某个会话的历史输入并限制最多保留最近 200 条。
-fn load_session_history_entries(cwd: &Path, session_id: &str) -> Vec<String> {
+fn load_session_history_entries(cwd: impl AsRef<Path>, session_id: &str) -> Vec<String> {
     let path = session_history_path(cwd, session_id);
     let Ok(content) = fs::read_to_string(path) else {
         return vec![];
@@ -41,7 +41,11 @@ fn load_session_history_entries(cwd: &Path, session_id: &str) -> Vec<String> {
 }
 
 /// 保存某个会话的历史输入并仅写入最近 200 条记录。
-fn save_session_history_entries(cwd: &Path, session_id: &str, entries: &[String]) -> Result<()> {
+fn save_session_history_entries(
+    cwd: impl AsRef<Path>,
+    session_id: &str,
+    entries: &[String],
+) -> Result<()> {
     let path = session_history_path(cwd, session_id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -205,19 +209,19 @@ pub struct SessionIndexEntry {
 // ============================================================================
 
 /// Save a complete session record to disk
-pub fn save_session(cwd: &Path, session: &SessionRecord) -> Result<()> {
-    let session_dir = project_sessions_dir(cwd).join(&session.session_id);
+pub fn save_session(cwd: impl AsRef<Path>, session: &SessionRecord) -> Result<()> {
+    let session_dir = project_sessions_dir(cwd.as_ref()).join(&session.session_id);
     fs::create_dir_all(&session_dir)?;
 
     // Save metadata
-    let metadata_path = project_session_metadata_path(cwd, &session.session_id);
+    let metadata_path = project_session_metadata_path(cwd.as_ref(), &session.session_id);
     fs::write(
         metadata_path,
         format!("{}\n", serde_json::to_string_pretty(&session.metadata)?),
     )?;
 
     // Save conversation
-    let conv_path = project_session_conversation_path(cwd, &session.session_id);
+    let conv_path = project_session_conversation_path(cwd.as_ref(), &session.session_id);
     let conversation = serde_json::json!({
         "messages": session.messages,
         "turns": session.turns,
@@ -228,14 +232,14 @@ pub fn save_session(cwd: &Path, session: &SessionRecord) -> Result<()> {
     )?;
 
     // Update session index
-    update_session_index(cwd, &session.metadata)?;
+    update_session_index(cwd.as_ref(), &session.metadata)?;
 
     Ok(())
 }
 
 /// Update session in the index
-fn update_session_index(cwd: &Path, metadata: &SessionMetadata) -> Result<()> {
-    let index_path = project_sessions_index(cwd);
+fn update_session_index(cwd: impl AsRef<Path>, metadata: &SessionMetadata) -> Result<()> {
+    let index_path = project_sessions_index(cwd.as_ref());
     let mut index: SessionIndex = if index_path.exists() {
         let content = fs::read_to_string(&index_path)?;
         serde_json::from_str(&content).unwrap_or_else(|_| SessionIndex { sessions: vec![] })
@@ -282,8 +286,8 @@ fn update_session_index(cwd: &Path, metadata: &SessionMetadata) -> Result<()> {
 }
 
 /// Load all sessions (for resume functionality)
-pub fn load_sessions(cwd: &Path) -> Result<SessionIndex> {
-    let index_path = project_sessions_index(cwd);
+pub fn load_sessions(cwd: impl AsRef<Path>) -> Result<SessionIndex> {
+    let index_path = project_sessions_index(cwd.as_ref());
     if !index_path.exists() {
         return Ok(SessionIndex { sessions: vec![] });
     }
@@ -294,14 +298,14 @@ pub fn load_sessions(cwd: &Path) -> Result<SessionIndex> {
 }
 
 /// Load a specific session for resuming
-pub fn load_session(cwd: &Path, session_id: &str) -> Result<SessionRecord> {
-    let metadata_path = project_session_metadata_path(cwd, session_id);
+pub fn load_session(cwd: impl AsRef<Path>, session_id: &str) -> Result<SessionRecord> {
+    let metadata_path = project_session_metadata_path(cwd.as_ref(), session_id);
     let metadata: SessionMetadata = {
         let content = fs::read_to_string(metadata_path)?;
         serde_json::from_str(&content)?
     };
 
-    let conv_path = project_session_conversation_path(cwd, session_id);
+    let conv_path = project_session_conversation_path(cwd.as_ref(), session_id);
     let (messages, turns): (Vec<serde_json::Value>, Vec<TurnRecord>) = if conv_path.exists() {
         let content = fs::read_to_string(conv_path)?;
         let data: serde_json::Value = serde_json::from_str(&content)?;
@@ -373,7 +377,7 @@ pub fn render_recovered_messages(messages: &[ChatMessage]) -> Vec<TranscriptLine
 // ============================================================================
 
 /// Format sessions from index as a displayable table with optional filtering
-pub fn list_sessions_formatted(cwd: &Path, filter_opt: Option<&str>) -> Result<String> {
+pub fn list_sessions_formatted(cwd: impl AsRef<Path>, filter_opt: Option<&str>) -> Result<String> {
     let sessions = load_sessions(cwd)?;
 
     if sessions.sessions.is_empty() {
@@ -438,7 +442,12 @@ pub fn list_sessions_formatted(cwd: &Path, filter_opt: Option<&str>) -> Result<S
 
         output.push_str(&format!(
             "{:<18} {:<20} {:<20} {:<8} {:<25} {:<12}\n",
-            id_display, created_display, ended_display, entry.turn_count, model_display, entry.status
+            id_display,
+            created_display,
+            ended_display,
+            entry.turn_count,
+            model_display,
+            entry.status
         ));
     }
 
@@ -447,7 +456,7 @@ pub fn list_sessions_formatted(cwd: &Path, filter_opt: Option<&str>) -> Result<S
 
 /// Find sessions matching a prefix (for deletion and resumption)
 /// Returns list of matching session IDs
-pub fn find_sessions_by_prefix(cwd: &Path, prefix: &str) -> Result<Vec<String>> {
+pub fn find_sessions_by_prefix(cwd: impl AsRef<Path>, prefix: &str) -> Result<Vec<String>> {
     let sessions = load_sessions(cwd)?;
     let prefix_lower = prefix.to_lowercase();
 
@@ -462,33 +471,24 @@ pub fn find_sessions_by_prefix(cwd: &Path, prefix: &str) -> Result<Vec<String>> 
 }
 
 /// Delete a session and remove its entry from the index
-pub fn delete_session(cwd: &Path, session_id: &str) -> Result<()> {
+pub fn delete_session(cwd: impl AsRef<Path>, session_id: &str) -> Result<()> {
     // Load current index to verify session exists
-    let index = load_sessions(cwd)?;
-    if !index
-        .sessions
-        .iter()
-        .any(|e| e.session_id == session_id)
-    {
-        return Err(anyhow!(
-            "Session not found: {}",
-            session_id
-        ));
+    let index = load_sessions(cwd.as_ref())?;
+    if !index.sessions.iter().any(|e| e.session_id == session_id) {
+        return Err(anyhow!("Session not found: {}", session_id));
     }
 
     // Remove session directory
-    let session_dir = project_sessions_dir(cwd).join(session_id);
+    let session_dir = project_sessions_dir(cwd.as_ref()).join(session_id);
     if session_dir.exists() {
         fs::remove_dir_all(&session_dir)?;
     }
 
     // Update index
     let mut new_index = index.clone();
-    new_index
-        .sessions
-        .retain(|e| e.session_id != session_id);
+    new_index.sessions.retain(|e| e.session_id != session_id);
 
-    let index_path = project_sessions_index(cwd);
+    let index_path = project_sessions_index(cwd.as_ref());
     if let Some(parent) = index_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -499,4 +499,129 @@ pub fn delete_session(cwd: &Path, session_id: &str) -> Result<()> {
     )?;
 
     Ok(())
+}
+
+/// 根据前缀查询和加载会话，用于 history resume 命令
+pub async fn resolve_and_load_session(
+    cwd: impl AsRef<Path>,
+    prefix: &str,
+) -> Result<Option<(String, Vec<ChatMessage>, Vec<TranscriptLine>)>> {
+    let matches = find_sessions_by_prefix(cwd.as_ref(), prefix)?;
+
+    if matches.is_empty() {
+        eprintln!("✗ 未找到匹配的会话: {}", prefix);
+        return Ok(None);
+    }
+
+    let sessions = load_sessions(cwd.as_ref())?;
+
+    let target_id = if matches.len() == 1 {
+        // Single match - use directly
+        matches[0].clone()
+    } else {
+        // Multiple matches - interactive selection
+        eprintln!("📋 找到 {} 个匹配的会话:", matches.len());
+
+        let items: Vec<(String, String, usize, String)> = matches
+            .iter()
+            .filter_map(|matched_id| {
+                sessions
+                    .sessions
+                    .iter()
+                    .find(|e| &e.session_id == matched_id)
+                    .map(|entry| {
+                        let created = entry.created_at.chars().take(19).collect::<String>();
+                        let model = entry.model.as_deref().unwrap_or("—").to_string();
+                        (matched_id.clone(), created, entry.turn_count, model)
+                    })
+            })
+            .collect();
+
+        match interactive_select(
+            items,
+            |idx, (id, created, turns, model)| {
+                format!(
+                    "{:<2} {:<18} {:<20} {:<6} {:<30}",
+                    idx,
+                    &id[..id.len().min(16)],
+                    created,
+                    turns,
+                    model
+                )
+            },
+            &format!(
+                "请选择要恢复的会话 (1-{}，或按 Enter 取消): ",
+                matches.len()
+            ),
+        )? {
+            Some((id, _, _, _)) => id,
+            None => return Ok(None),
+        }
+    };
+
+    // Load session data
+    match load_session(cwd.as_ref(), &target_id) {
+        Ok(session) => {
+            eprintln!("✨ 正在加载会话数据...\n");
+
+            let recovered_messages: Vec<ChatMessage> = session
+                .messages
+                .iter()
+                .filter_map(|v| serde_json::from_value::<ChatMessage>(v.clone()).ok())
+                .collect();
+
+            let transcript_lines = render_recovered_messages(&recovered_messages);
+            let transcript = transcript_lines
+                .into_iter()
+                .map(|line| TranscriptLine {
+                    kind: line.kind,
+                    body: line.body,
+                })
+                .collect();
+
+            Ok(Some((target_id, recovered_messages, transcript)))
+        }
+        Err(e) => {
+            eprintln!("⚠️  无法加载会话: {}", e);
+            Ok(None)
+        }
+    }
+}
+
+/// 通用的交互式列表选择函数
+pub fn interactive_select<T: Clone>(
+    items: Vec<T>,
+    format_fn: impl Fn(usize, &T) -> String,
+    prompt: &str,
+) -> Result<Option<T>> {
+    if items.is_empty() {
+        return Ok(None);
+    }
+
+    eprintln!();
+    for (idx, item) in items.iter().enumerate() {
+        eprintln!("{}", format_fn(idx + 1, item));
+    }
+
+    eprintln!();
+    eprint!("{}", prompt);
+    use std::io::{self, BufRead};
+
+    let stdin = io::stdin();
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line)?;
+
+    let line = line.trim();
+    if line.is_empty() {
+        eprintln!("已取消。");
+        return Ok(None);
+    }
+
+    match line.parse::<usize>() {
+        Ok(choice) if choice > 0 && choice <= items.len() => Ok(Some(items[choice - 1].clone())),
+        _ => {
+            eprintln!("✗ 无效的选择。");
+            Ok(None)
+        }
+    }
 }

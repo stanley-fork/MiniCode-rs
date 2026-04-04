@@ -49,21 +49,24 @@ fn get_env_string(
 }
 
 /// 生成可执行启动脚本并赋予执行权限。
-fn create_launcher_script(launcher_path: &Path, binary_path: &Path) -> Result<()> {
+fn create_launcher_script(
+    launcher_path: impl AsRef<Path>,
+    binary_path: impl AsRef<Path>,
+) -> Result<()> {
     let script = format!(
         "#!/usr/bin/env bash\nset -euo pipefail\n\nexec \"{}\" \"$@\"\n",
-        binary_path.display()
+        binary_path.as_ref().display()
     );
 
-    std::fs::write(launcher_path, script)?;
-    let mut perms = std::fs::metadata(launcher_path)?.permissions();
+    std::fs::write(launcher_path.as_ref(), script)?;
+    let mut perms = std::fs::metadata(launcher_path.as_ref())?.permissions();
     perms.set_mode(0o755);
-    std::fs::set_permissions(launcher_path, perms)?;
+    std::fs::set_permissions(launcher_path.as_ref(), perms)?;
     Ok(())
 }
 
 /// 交互式安装向导：收集配置并写入启动脚本。
-pub fn run_install_wizard(cwd: &Path) -> Result<()> {
+pub fn run_install_wizard(cwd: impl AsRef<Path>) -> Result<()> {
     println!("mini-code installer");
 
     let settings_path = mini_code_settings_path();

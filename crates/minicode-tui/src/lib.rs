@@ -11,6 +11,7 @@ use crossterm::terminal::{
 use minicode_history::{
     initial_messages, initial_transcript, load_history_entries, session_id, session_start_time,
 };
+use minicode_types::TranscriptLine;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -30,7 +31,7 @@ pub use minicode_history::{
 pub use minicode_permissions::init_session_permissions;
 use render::render_screen;
 use state::ScreenState;
-pub use state::{TranscriptEntry, TuiAppArgs};
+pub use state::TuiAppArgs;
 use turn::{handle_approval_key, handle_submit};
 
 struct TerminalGuard;
@@ -156,7 +157,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             {
                                 Ok(exit) => should_exit = exit,
                                 Err(err) => {
-                                    state.transcript.push(TranscriptEntry {
+                                    state.transcript.push(TranscriptLine {
                                         kind: "tool:error".to_string(),
                                         body: format!("submit failed: {err:#}"),
                                     });

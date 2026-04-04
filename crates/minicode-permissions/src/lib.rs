@@ -137,7 +137,7 @@ impl std::fmt::Debug for PermissionManager {
 
 impl PermissionManager {
     /// 从持久化存储加载权限配置并初始化管理器。
-    pub fn new(workspace_root: &PathBuf) -> Result<Self> {
+    pub fn new(workspace_root: impl AsRef<Path>) -> Result<Self> {
         let ctx = get_active_session_context()
             .ok_or_else(|| anyhow!("Active session context is not initialized"))?;
         let store_path = project_session_permissions_path(&ctx.cwd, &ctx.session_id);
@@ -160,7 +160,7 @@ impl PermissionManager {
             turn_allow_all_edits: false,
         };
         Ok(Self {
-            workspace_root: workspace_root.clone(),
+            workspace_root: workspace_root.as_ref().to_path_buf(),
             store_path,
             state: Arc::new(Mutex::new(state)),
             prompt_handler: Arc::new(Mutex::new(None)),
@@ -652,8 +652,8 @@ impl PermissionManager {
 }
 
 /// 判断目标路径是否位于指定根目录内。
-fn is_within_directory(root: &Path, target: &Path) -> bool {
-    let Ok(relative) = target.strip_prefix(root) else {
+fn is_within_directory(root: impl AsRef<Path>, target: impl AsRef<Path>) -> bool {
+    let Ok(relative) = target.as_ref().strip_prefix(root.as_ref()) else {
         return false;
     };
     !relative
@@ -662,7 +662,7 @@ fn is_within_directory(root: &Path, target: &Path) -> bool {
 }
 
 /// 从磁盘读取权限存储，不存在时返回默认值。
-fn read_store(path: &Path) -> Result<PermissionStore> {
+fn read_store(path: impl AsRef<Path>) -> Result<PermissionStore> {
     match fs::read_to_string(path) {
         Ok(content) => Ok(serde_json::from_str(&content)?),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(PermissionStore::default()),

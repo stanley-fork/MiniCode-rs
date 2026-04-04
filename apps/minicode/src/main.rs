@@ -1,830 +1,13 @@
-use std::sync::Arc;
-use std::{io::IsTerminal, path::PathBuf};
+use std::{path::Path, sync::Arc};
 
-use anyhow::{Result, anyhow};
-use clap::{Parser, Subcommand};
+use anyhow::Result;
 
+use clap::Parser;
 use minicode_core::*;
-
-/// MiniCode 命令行工具
-#[derive(Debug, Parser)]
-#[command(
-    name = "minicode",
-    version,
-    about = "A Claude-powered code assistant",
-    long_about = r#"MiniCode: Claude 驱动的代码助手
-
-交互式编程环境，让 Claude 帮助您完成代码任务。
-
-使用示例：
-  minicode                    # 启动交互式 TUI 环境
-  minicode install            # 运行安装向导
-  minicode mcp list           # 列出已配置的 MCP 服务
-  minicode mcp add claude -- npx @anthropic-ai/sdk
-  minicode skills list        # 列出可用技能
-  minicode skills add ./my-skill --name my-skill
-
-更多信息：
-  minicode --help
-  minicode mcp --help
-  minicode skills --help
-  minicode install --help
-"#,
-    disable_help_subcommand = true,
-    propagate_version = true
-)]
-struct Cli {
-    /// 恢复之前的会话
-    #[arg(long, help = "Resume a previous session")]
-    resume: bool,
-
-    /// 执行的子命令
-    #[command(subcommand)]
-    command: Option<Command>,
-}
-
-/// 支持的子命令
-#[derive(Debug, Subcommand)]
-enum Command {
-    /// 运行安装向导，配置 MiniCode
-    #[command(
-        about = "Run installation wizard",
-        long_about = "交互式安装向导，帮助您配置 MiniCode 的初始设置
-
-包括：
-  - 验证 Claude API 密钥
-  - 配置模型选择
-  - 初始化权限系统
-  - 发现和配置 MCP 服务"
-    )]
-    Install,
-
-    /// 管理 MCP 服务
-    #[command(
-        about = "Manage MCP servers",
-        long_about = "配置和管理 MCP（模型上下文协议）服务器
-
-MCP 允许 Claude 访问外部工具、资源和数据。
-使用 mcp 命令可以列出、添加和移除服务器。
-
-配置作用域：
-  --project  使用项目级配置（.minicode/mcp.json）
-  (默认)     使用用户级配置（~/.minicode/mcp.json）
-
-示例：
-  minicode mcp list
-  minicode mcp add my-server -- node server.js
-  minicode mcp add my-server --protocol content-length -- node server.js
-  minicode mcp add my-server --env API_KEY=xxx --env DEBUG=1 -- node server.js"
-    )]
-    Mcp {
-        #[command(subcommand)]
-        command: McpCommand,
-    },
-
-    /// 管理技能
-    #[command(
-        about = "Manage skills",
-        long_about = "发现、安装和管理 Claude 技能
-
-技能是 Claude 可用的特定功能或知识包。
-
-配置作用域：
-  --project  使用项目级配置
-  (默认)     使用用户级配置
-
-示例：
-  minicode skills list
-  minicode skills add /path/to/skill
-  minicode skills add ./my-skill --name custom-name --project
-  minicode skills remove my-skill"
-    )]
-    Skills {
-        #[command(subcommand)]
-        command: SkillsCommand,
-    },
-
-    /// 显示帮助信息
-    #[command(about = "Show help")]
-    Help,
-
-    /// 管理会话历史
-    #[command(
-        about = "Manage session history",
-        long_about = "查看、恢复和删除会话历史记录
-
-会话记录包含完整的对话、工具调用和模型交互。
-
-示例：
-  minicode history list           # 列出所有会话
-  minicode history list claude-3  # 按 model 过滤
-  minicode history rm <session_id>  # 删除会话
-  minicode history resume <session_id>  # 恢复会话"
-    )]
-    History {
-        #[command(subcommand)]
-        command: HistoryCommand,
-    },
-}
-
-/// MCP 服务子命令
-#[derive(Debug, Subcommand)]
-enum McpCommand {
-    /// 列出已配置的 MCP 服务
-    #[command(
-        about = "List configured MCP servers",
-        long_about = "显示所有已配置的 MCP 服务器及其详细信息
-
-包括：
-  - 服务器名称
-  - 启动命令
-  - 通信协议
-  - 工具和资源数量
-
-用法：
-  minicode mcp list          # 列出用户级服务器
-  minicode mcp list --project  # 列出项目级服务器"
-    )]
-    List {
-        /// 使用项目级配置而非用户级
-        #[arg(long, help = "Show project-level servers instead of user-level")]
-        project: bool,
-    },
-
-    /// 添加新的 MCP 服务
-    #[command(
-        about = "Add a new MCP server",
-        long_about = "注册一个新的 MCP 服务器
-
-必需参数：
-  <NAME>       服务器的唯一名称
-  -- <COMMAND> 启动服务器的命令（在 -- 后指定）
-
-可选标志：
-  --protocol   通信协议（auto/content-length/newline-json）
-  --env        环境变量（KEY=VALUE，可重复指定）
-  --project    保存到项目配置而非用户配置
-
-用法示例：
-  # 基础用法
-  minicode mcp add my-server -- node server.js
-
-  # 指定协议
-  minicode mcp add my-server --protocol content-length -- python server.py
-
-  # 添加环境变量
-  minicode mcp add my-server --env API_KEY=xxx --env DEBUG=1 -- node server.js
-
-  # 项目级配置
-  minicode mcp add my-server -- node server.js --project"
-    )]
-    Add {
-        /// MCP 服务名称
-        #[arg(help = "Unique name for this server")]
-        name: String,
-
-        /// 通信协议
-        #[arg(
-            long,
-            value_parser = ["auto", "content-length", "newline-json"],
-            help = "Communication protocol (default: auto-detect)"
-        )]
-        protocol: Option<String>,
-
-        /// 环境变量，格式为 KEY=VALUE（可重复）
-        #[arg(
-            long = "env",
-            help = "Environment variable in KEY=VALUE format (repeatable)"
-        )]
-        env_vars: Vec<String>,
-
-        /// 使用项目级配置而非用户级
-        #[arg(long, help = "Save to project configuration")]
-        project: bool,
-
-        /// MCP 命令及参数
-        #[arg(
-            trailing_var_arg = true,
-            required = true,
-            allow_hyphen_values = true,
-            help = "Command and arguments to start the server (after --)"
-        )]
-        command: Vec<String>,
-    },
-
-    /// 移除 MCP 服务
-    #[command(
-        about = "Remove an MCP server",
-        long_about = "从配置中删除已注册的 MCP 服务器
-
-用法：
-  minicode mcp remove my-server          # 从用户配置删除
-  minicode mcp remove my-server --project  # 从项目配置删除"
-    )]
-    Remove {
-        /// MCP 服务名称
-        #[arg(help = "Name of the server to remove")]
-        name: String,
-
-        /// 使用项目级配置而非用户级
-        #[arg(long, help = "Remove from project configuration")]
-        project: bool,
-    },
-}
-
-/// 会话历史管理子命令
-#[derive(Debug, Subcommand)]
-enum HistoryCommand {
-    /// 列出会话历史
-    #[command(
-        about = "List all sessions",
-        long_about = "显示所有会话及其详细信息
-
-列显内容：
-  - Session ID (前16个字符)
-  - 创建时间 (ISO 8601 格式)
-  - 结束时间
-  - 对话轮数
-  - 使用的模型
-  - 状态 (active/completed)
-
-用法：
-  minicode history list           # 列出所有会话
-  minicode history list claude-3  # 按模型名称过滤
-  minicode history list sess_abc  # 按 session_id 过滤"
-    )]
-    List {
-        /// 可选的过滤条件（会话ID或模型名称）
-        #[arg(help = "Optional filter by session_id or model")]
-        filter: Option<String>,
-    },
-
-    /// 删除会话
-    #[command(
-        about = "Delete a session",
-        long_about = "删除指定的会话及其所有数据
-
-注意：此操作不可恢复。删除的会话包括：
-  - 对话历史
-  - 工具调用记录
-  - 会话元数据
-  - 输入历史
-
-用法：
-  minicode history rm <session_id>"
-    )]
-    Rm {
-        /// 要删除的会话 ID
-        #[arg(help = "Session ID to delete")]
-        session_id: String,
-    },
-
-    /// 恢复会话
-    #[command(
-        about = "Resume a specific session",
-        long_about = "启动 MiniCode 并恢复指定的会话
-
-这等同于运行 'minicode --resume' 然后选择对应的会话。
-
-用法：
-  minicode history resume <session_id>"
-    )]
-    Resume {
-        /// 要恢复的会话 ID
-        #[arg(help = "Session ID to resume")]
-        session_id: String,
-    },
-}
-
-/// 技能管理子命令
-#[derive(Debug, Subcommand)]
-enum SkillsCommand {
-    /// 列出可用的技能
-    #[command(
-        about = "List available skills",
-        long_about = "发现并显示所有可用的 Claude 技能
-
-技能被自动发现于以下位置：
-  - ~/.minicode/skills/       (用户级技能)
-  - .minicode/skills/        (项目级技能)
-  - 其他配置的技能目录
-
-每个技能显示：
-  - 名称和描述
-  - 安装位置"
-    )]
-    List,
-
-    /// 安装技能
-    #[command(
-        about = "Install a skill from path",
-        long_about = "从本地路径安装或复制技能到 MiniCode
-
-参数：
-  <PATH>   技能文件或目录的路径
-
-可选标志：
-  --name      自定义技能名称（默认使用目录名）
-  --project   安装到项目级位置而非用户级
-
-用法示例：
-  # 从目录安装技能
-  minicode skills add ./my-skill
-
-  # 指定自定义名称
-  minicode skills add ./my-skill --name awesome-skill
-
-  # 安装到项目级
-  minicode skills add ./my-skill --project
-
-  # 从远程克隆的技能
-  minicode skills add ~/Downloads/skill-repo --name imported-skill"
-    )]
-    Add {
-        /// 技能文件或目录路径
-        #[arg(help = "Path to skill file or directory")]
-        path: String,
-
-        /// 自定义技能名称
-        #[arg(long, help = "Custom name for the skill (defaults to directory name)")]
-        name: Option<String>,
-
-        /// 使用项目级配置而非用户级
-        #[arg(long, help = "Install to project location")]
-        project: bool,
-    },
-
-    /// 移除技能
-    #[command(
-        about = "Remove an installed skill",
-        long_about = "从配置中删除已安装的技能
-
-用法：
-  minicode skills remove my-skill          # 移除用户级技能
-  minicode skills remove my-skill --project  # 移除项目级技能
-
-注意：只删除管理的技能副本，原始源文件保持不变"
-    )]
-    Remove {
-        /// 技能名称
-        #[arg(help = "Name of the skill to remove")]
-        name: String,
-
-        /// 使用项目级配置而非用户级
-        #[arg(long, help = "Remove from project location")]
-        project: bool,
-    },
-}
-
-/// 检查标准输入输出是否都连接到交互式终端。
-fn is_interactive_terminal() -> bool {
-    std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
-}
-
-/// 将 CLI 命令转换为管理操作
-async fn handle_management_command(cwd: &PathBuf, cmd: Command) -> Result<bool> {
-    match cmd {
-        Command::Install => {
-            run_install_wizard(cwd)?;
-            Ok(true)
-        }
-        Command::Mcp { command } => handle_mcp_command(cwd, command).await,
-        Command::Skills { command } => handle_skills_command(cwd, command).await,
-        Command::History { command } => handle_history_command(cwd, command).await,
-        Command::Help => {
-            print_help();
-            Ok(true)
-        }
-    }
-}
-
-/// 打印详细的帮助信息
-fn print_help() {
-    let help = r#"MiniCode - 基于 Claude 的代码助手
-
-用法：minicode [命令] [选项]
-
-命令：
-  install       运行安装向导配置 MiniCode
-  mcp           管理 MCP (模型上下文协议) 服务器
-  skills        发现和管理 Claude 技能
-  history       管理会话历史记录
-  help          显示此帮助信息
-
-无命令运行：
-  minicode      启动交互式 TUI 环境
-
-快速开始：
-  1. minicode install          # 首次配置
-  2. minicode mcp list         # 查看 MCP 服务
-  3. minicode                  # 启动编程环境
-
-获取更多信息：
-  minicode mcp --help          # MCP 命令帮助
-  minicode skills --help       # 技能命令帮助
-  minicode history --help      # 历史记录命令帮助
-  minicode install --help      # 安装向导帮助
-  minicode --version           # 显示版本
-
-示例：
-  # MCP 管理
-  minicode mcp list
-  minicode mcp add my-server -- node server.js
-  minicode mcp remove my-server
-
-  # 技能管理
-  minicode skills list
-  minicode skills add ./my-skill --name my-skill
-  minicode skills remove my-skill
-
-  # 会话历史
-  minicode history list
-  minicode history list claude-3
-  minicode history rm <session_id>
-  minicode history resume <session_id>
-
-  # 配置作用域
-  minicode mcp list --project     # 项目级 MCP
-  minicode skills add ./s --project  # 项目级技能
-
-文档：
-  访问 https://github.com/harkerhand/minicode-rs 获取完整文档
-"#;
-    println!("{}", help);
-}
-
-/// 处理 MCP 相关命令
-async fn handle_mcp_command(cwd: &PathBuf, cmd: McpCommand) -> Result<bool> {
-    match cmd {
-        McpCommand::List { project } => {
-            let scope = if project { "project" } else { "user" };
-            list_mcp_servers(cwd, scope).await
-        }
-        McpCommand::Add {
-            name,
-            protocol,
-            env_vars,
-            project,
-            command,
-        } => {
-            let scope = if project { "project" } else { "user" };
-            let env = parse_env_pairs(&env_vars)?;
-            add_mcp_server(cwd, scope, name, protocol, env, command).await
-        }
-        McpCommand::Remove { name, project } => {
-            let scope = if project { "project" } else { "user" };
-            remove_mcp_server(cwd, scope, name).await
-        }
-    }
-}
-
-/// 处理技能相关命令
-async fn handle_skills_command(cwd: &PathBuf, cmd: SkillsCommand) -> Result<bool> {
-    match cmd {
-        SkillsCommand::List => list_skills(cwd).await,
-        SkillsCommand::Add {
-            path,
-            name,
-            project,
-        } => {
-            let scope = if project { "project" } else { "user" };
-            add_skill(cwd, scope, path, name).await
-        }
-        SkillsCommand::Remove { name, project } => {
-            let scope = if project { "project" } else { "user" };
-            remove_skill(cwd, scope, name).await
-        }
-    }
-}
-
-/// 处理会话历史相关命令
-async fn handle_history_command(cwd: &PathBuf, cmd: HistoryCommand) -> Result<bool> {
-    match cmd {
-        HistoryCommand::List { filter } => {
-            let output = list_sessions_formatted(cwd, filter.as_deref())?;
-            println!("{}", output);
-            Ok(true)
-        }
-        HistoryCommand::Rm { session_id } => {
-            // Find sessions matching the prefix
-            let matches = find_sessions_by_prefix(cwd, &session_id)?;
-
-            if matches.is_empty() {
-                eprintln!("✗ 未找到匹配的会话: {}", session_id);
-                return Ok(true);
-            }
-
-            let target_id = if matches.len() == 1 {
-                // Single match - delete directly
-                matches[0].clone()
-            } else {
-                // Multiple matches - interactive selection
-                eprintln!("📋 找到 {} 个匹配的会话:", matches.len());
-
-                let sessions = load_sessions(cwd)?;
-                let items: Vec<(String, String, usize, String)> = matches
-                    .iter()
-                    .filter_map(|matched_id| {
-                        sessions
-                            .sessions
-                            .iter()
-                            .find(|e| &e.session_id == matched_id)
-                            .map(|entry| {
-                                let created = entry.created_at.chars().take(19).collect::<String>();
-                                let model = entry.model.as_deref().unwrap_or("—").to_string();
-                                (matched_id.clone(), created, entry.turn_count, model)
-                            })
-                    })
-                    .collect();
-
-                match interactive_select(
-                    items,
-                    |idx, (id, created, turns, model)| {
-                        format!(
-                            "{:<2} {:<18} {:<20} {:<6} {:<30}",
-                            idx,
-                            &id[..id.len().min(16)],
-                            created,
-                            turns,
-                            model
-                        )
-                    },
-                    &format!(
-                        "请选择要删除的会话 (1-{}，或按 Enter 取消): ",
-                        matches.len()
-                    ),
-                )? {
-                    Some((id, _, _, _)) => id,
-                    None => return Ok(true),
-                }
-            };
-
-            delete_session(cwd, &target_id)?;
-            println!("✓ 会话已删除: {}", &target_id[..target_id.len().min(16)]);
-            Ok(true)
-        }
-        HistoryCommand::Resume { session_id } => {
-            match resolve_and_load_session(cwd, &session_id).await? {
-                Some((session_id, recovered_messages, initial_transcript)) => {
-                    let runtime = load_runtime_config(cwd).ok();
-                    let tools =
-                        Arc::new(create_default_tool_registry(cwd, runtime.as_ref()).await?);
-
-                    launch_tui_app(
-                        cwd,
-                        session_id,
-                        Some(recovered_messages),
-                        initial_transcript,
-                        runtime,
-                        tools,
-                    )
-                    .await?;
-
-                    Ok(true)
-                }
-                None => Ok(true),
-            }
-        }
-    }
-}
-
-/// 将日志文本按字符数截断，超出时追加省略号
-fn truncate_log_text(input: &str, max_chars: usize) -> String {
-    let chars: Vec<char> = input.chars().collect();
-    if chars.len() <= max_chars {
-        return input.to_string();
-    }
-    let truncated: String = chars[..max_chars].iter().collect();
-    format!("{}...", truncated)
-}
-
-/// 通用的交互式列表选择函数
-fn interactive_select<T: Clone>(
-    items: Vec<T>,
-    format_fn: impl Fn(usize, &T) -> String,
-    prompt: &str,
-) -> Result<Option<T>> {
-    if items.is_empty() {
-        return Ok(None);
-    }
-
-    eprintln!();
-    for (idx, item) in items.iter().enumerate() {
-        eprintln!("{}", format_fn(idx + 1, item));
-    }
-
-    eprintln!();
-    eprint!("{}", prompt);
-    use std::io::{self, BufRead};
-
-    let stdin = io::stdin();
-    let mut line = String::new();
-    stdin.lock().read_line(&mut line)?;
-
-    let line = line.trim();
-    if line.is_empty() {
-        eprintln!("已取消。");
-        return Ok(None);
-    }
-
-    match line.parse::<usize>() {
-        Ok(choice) if choice > 0 && choice <= items.len() => Ok(Some(items[choice - 1].clone())),
-        _ => {
-            eprintln!("✗ 无效的选择。");
-            Ok(None)
-        }
-    }
-}
-
-/// 输出 MCP 服务启动阶段的摘要日志
-fn log_mcp_bootstrap(servers: &[McpServerSummary]) {
-    eprintln!(
-        "\x1b[1;34m[bootstrap]\x1b[0m \x1b[1mMCP servers configured:\x1b[0m {}",
-        servers.len()
-    );
-
-    for server in servers {
-        let status_colored = match server.status.as_str() {
-            "connected" => "\x1b[32mconnected\x1b[0m",
-            "error" => "\x1b[31merror\x1b[0m",
-            "disabled" => "\x1b[90mdisabled\x1b[0m",
-            _ => server.status.as_str(),
-        };
-
-        let mut details = vec![
-            format!("status={}", status_colored),
-            format!("tools={}", server.tool_count),
-            format!("resources={}", server.resource_count.unwrap_or(0)),
-            format!("prompts={}", server.prompt_count.unwrap_or(0)),
-        ];
-
-        if let Some(protocol) = &server.protocol {
-            details.push(format!("protocol={}", protocol));
-        }
-
-        if let Some(error) = &server.error {
-            details.push(format!("error={}", truncate_log_text(error, 220)));
-        }
-
-        eprintln!(
-            "\x1b[1;34m[bootstrap]\x1b[0m MCP {}: {}",
-            server.name,
-            details.join(", ")
-        );
-    }
-}
-
-/// 交互式会话选择
-async fn select_session(cwd: &PathBuf) -> Result<Option<String>, anyhow::Error> {
-    let sessions = load_sessions(cwd)?;
-
-    if sessions.sessions.is_empty() {
-        eprintln!("没有找到之前的会话。");
-        return Ok(None);
-    }
-
-    // 显示最近的 10 个会话
-    eprintln!("\n📋 之前的会话:");
-    eprintln!(
-        "{:<3} {:<26} {:<6} {:<30}",
-        "编号", "创建时间", "回合数", "模型"
-    );
-    eprintln!("{}", "-".repeat(80));
-
-    for (idx, entry) in sessions.sessions.iter().take(10).enumerate() {
-        let created = entry.created_at.chars().take(19).collect::<String>();
-        let model = entry.model.as_deref().unwrap_or("未知");
-        let model_short = if model.len() > 25 {
-            format!("{}...", &model[..22])
-        } else {
-            model.to_string()
-        };
-
-        eprintln!(
-            "{:<3} {:<26} {:<6} {:<30}",
-            idx + 1,
-            created,
-            entry.turn_count,
-            model_short
-        );
-    }
-
-    // 获取用户输入
-    eprint!(
-        "\n选择会话 (1-{}，或按 Enter 取消): ",
-        sessions.sessions.len().min(10)
-    );
-    use std::io::{self, BufRead};
-
-    let stdin = io::stdin();
-    let mut line = String::new();
-    stdin.lock().read_line(&mut line)?;
-
-    let line = line.trim();
-    if line.is_empty() {
-        eprintln!("已取消。创建新会话。\n");
-        return Ok(None);
-    }
-
-    match line.parse::<usize>() {
-        Ok(choice) if choice > 0 && choice <= sessions.sessions.len().min(10) => {
-            let session_id = &sessions.sessions[choice - 1].session_id;
-            eprintln!("恢复会话: {}\n", session_id);
-            Ok(Some(session_id.clone()))
-        }
-        _ => {
-            eprintln!("无效的选择。创建新会话。\n");
-            Ok(None)
-        }
-    }
-}
-
-/// 根据前缀查询和加载会话，用于 history resume 命令
-async fn resolve_and_load_session(
-    cwd: &PathBuf,
-    prefix: &str,
-) -> Result<Option<(String, Vec<ChatMessage>, Vec<TranscriptEntry>)>> {
-    let matches = find_sessions_by_prefix(cwd, prefix)?;
-
-    if matches.is_empty() {
-        eprintln!("✗ 未找到匹配的会话: {}", prefix);
-        return Ok(None);
-    }
-
-    let sessions = load_sessions(cwd)?;
-
-    let target_id = if matches.len() == 1 {
-        // Single match - use directly
-        matches[0].clone()
-    } else {
-        // Multiple matches - interactive selection
-        eprintln!("📋 找到 {} 个匹配的会话:", matches.len());
-
-        let items: Vec<(String, String, usize, String)> = matches
-            .iter()
-            .filter_map(|matched_id| {
-                sessions
-                    .sessions
-                    .iter()
-                    .find(|e| &e.session_id == matched_id)
-                    .map(|entry| {
-                        let created = entry.created_at.chars().take(19).collect::<String>();
-                        let model = entry.model.as_deref().unwrap_or("—").to_string();
-                        (matched_id.clone(), created, entry.turn_count, model)
-                    })
-            })
-            .collect();
-
-        match interactive_select(
-            items,
-            |idx, (id, created, turns, model)| {
-                format!(
-                    "{:<2} {:<18} {:<20} {:<6} {:<30}",
-                    idx,
-                    &id[..id.len().min(16)],
-                    created,
-                    turns,
-                    model
-                )
-            },
-            &format!(
-                "请选择要恢复的会话 (1-{}，或按 Enter 取消): ",
-                matches.len()
-            ),
-        )? {
-            Some((id, _, _, _)) => id,
-            None => return Ok(None),
-        }
-    };
-
-    // Load session data
-    match load_session(cwd, &target_id) {
-        Ok(session) => {
-            eprintln!("✨ 正在加载会话数据...\n");
-
-            let recovered_messages: Vec<ChatMessage> = session
-                .messages
-                .iter()
-                .filter_map(|v| serde_json::from_value::<ChatMessage>(v.clone()).ok())
-                .collect();
-
-            let transcript_lines = render_recovered_messages(&recovered_messages);
-            let transcript = transcript_lines
-                .into_iter()
-                .map(|line| TranscriptEntry {
-                    kind: line.kind,
-                    body: line.body,
-                })
-                .collect();
-
-            Ok(Some((target_id, recovered_messages, transcript)))
-        }
-        Err(e) => {
-            eprintln!("⚠️  无法加载会话: {}", e);
-            Ok(None)
-        }
-    }
-}
+mod cli;
+use cli::*;
+mod utils;
+use utils::*;
 
 #[tokio::main]
 /// 程序入口点，处理所有错误并以适当的退出码结束
@@ -851,49 +34,41 @@ async fn run() -> Result<()> {
     let runtime = load_runtime_config(&cwd).ok();
     let tools = Arc::new(create_default_tool_registry(&cwd, runtime.as_ref()).await?);
 
-    // 启动 MCP 服务并记录日志
-    let mcp_servers = tools.get_mcp_servers();
-    log_mcp_bootstrap(&mcp_servers);
-    set_mcp_startup_logging_enabled(false);
-
     // 处理会话选择或创建
-    let (session_id, recovered_messages, initial_transcript) = if cli.resume {
-        match select_session(&cwd).await? {
-            Some(resume_id) => {
-                // 尝试加载会话数据
-                match load_session(&cwd, &resume_id) {
-                    Ok(session) => {
-                        eprintln!("✨ 正在加载会话数据...\n");
+    let (session_id, recovered_messages, initial_transcript) = if cli.resume
+        && let Some(resume_id) = select_session(&cwd).await?
+    {
+        // 尝试加载会话数据
+        match load_session(&cwd, &resume_id) {
+            Ok(session) => {
+                eprintln!("✨ 正在加载会话数据...\n");
 
-                        // 从会话中提取消息（直接使用 serde_json::Value）
-                        let recovered_messages: Vec<ChatMessage> = session
-                            .messages
-                            .iter()
-                            .filter_map(|v| serde_json::from_value::<ChatMessage>(v.clone()).ok())
-                            .collect();
+                // 从会话中提取消息（直接使用 serde_json::Value）
+                let recovered_messages: Vec<ChatMessage> = session
+                    .messages
+                    .iter()
+                    .filter_map(|v| serde_json::from_value::<ChatMessage>(v.clone()).ok())
+                    .collect();
 
-                        // 将 ChatMessage 列表转换为可视化的成绩单条目
-                        let transcript_lines = render_recovered_messages(&recovered_messages);
+                // 将 ChatMessage 列表转换为可视化的成绩单条目
+                let transcript_lines = render_recovered_messages(&recovered_messages);
 
-                        // 转换为 TranscriptEntry 格式
-                        let transcript = transcript_lines
-                            .into_iter()
-                            .map(|line| TranscriptEntry {
-                                kind: line.kind,
-                                body: line.body,
-                            })
-                            .collect();
+                // 转换为 TranscriptLine 格式
+                let transcript = transcript_lines
+                    .into_iter()
+                    .map(|line| TranscriptLine {
+                        kind: line.kind,
+                        body: line.body,
+                    })
+                    .collect();
 
-                        (resume_id, Some(recovered_messages), transcript)
-                    }
-                    Err(e) => {
-                        eprintln!("⚠️  无法加载会话: {}", e);
-                        eprintln!("🆕 创建新会话...\n");
-                        (generate_session_id(), None, vec![])
-                    }
-                }
+                (resume_id, Some(recovered_messages), transcript)
             }
-            None => (generate_session_id(), None, vec![]),
+            Err(e) => {
+                eprintln!("⚠️  无法加载会话: {}", e);
+                eprintln!("🆕 创建新会话...\n");
+                (generate_session_id(), None, vec![])
+            }
         }
     } else {
         // 创建新会话
@@ -913,22 +88,25 @@ async fn run() -> Result<()> {
 
 /// 启动 TUI 应用的通用函数
 async fn launch_tui_app(
-    cwd: &PathBuf,
+    cwd: impl AsRef<Path>,
     session_id: String,
     recovered_messages: Option<Vec<ChatMessage>>,
-    initial_transcript: Vec<TranscriptEntry>,
+    initial_transcript: Vec<TranscriptLine>,
     runtime: Option<RuntimeConfig>,
     tools: Arc<ToolRegistry>,
 ) -> Result<()> {
-    set_active_session_context(cwd.to_path_buf(), session_id.clone());
+    set_active_session_context(cwd.as_ref(), session_id.clone());
 
     let model: Arc<dyn ModelAdapter> = if is_mock_mode() {
         Arc::new(MockModelAdapter)
     } else {
-        Arc::new(AnthropicModelAdapter::new(tools.clone(), cwd.to_path_buf()))
+        Arc::new(AnthropicModelAdapter::new(
+            tools.clone(),
+            cwd.as_ref().to_path_buf(),
+        ))
     };
 
-    let permissions = PermissionManager::new(cwd)?;
+    let permissions = PermissionManager::new(cwd.as_ref())?;
 
     let initial_messages = if let Some(messages) = recovered_messages {
         messages
@@ -937,7 +115,7 @@ async fn launch_tui_app(
         let mcp_servers = tools.get_mcp_servers();
         vec![ChatMessage::System {
             content: build_system_prompt(
-                cwd.as_path(),
+                cwd.as_ref(),
                 &permissions.get_summary(),
                 &skills,
                 &mcp_servers,
@@ -961,30 +139,11 @@ async fn launch_tui_app(
         runtime: runtime.clone(),
         tools: tools.clone(),
         model,
-        cwd: cwd.to_path_buf(),
+        cwd: cwd.as_ref().into(),
     })
     .await?;
 
     tools.dispose().await;
     println!("👋 再见！");
     Ok(())
-}
-
-/// 验证程序运行在交互式终端中
-fn verify_interactive_terminal() -> Result<()> {
-    if !is_interactive_terminal() {
-        let stdin_tty = std::io::stdin().is_terminal();
-        let stdout_tty = std::io::stdout().is_terminal();
-        return Err(anyhow!(
-            "交互模式需要在 TTY 终端中运行（stdin={}, stdout={}）",
-            stdin_tty,
-            stdout_tty
-        ));
-    }
-    Ok(())
-}
-
-/// 检查是否启用了模拟模式
-fn is_mock_mode() -> bool {
-    std::env::var("MINI_CODE_MODEL_MODE").ok().as_deref() == Some("mock")
 }

@@ -18,7 +18,7 @@ pub fn build_unified_diff(file_path: &str, before: &str, after: &str) -> String 
 }
 
 /// 读取目标文件，不存在时按空文件处理。
-pub fn load_existing_file(target_path: &Path) -> Result<String> {
+pub fn load_existing_file(target_path: impl AsRef<Path>) -> Result<String> {
     match fs::read_to_string(target_path) {
         Ok(text) => Ok(text),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
@@ -30,10 +30,10 @@ pub fn load_existing_file(target_path: &Path) -> Result<String> {
 pub async fn apply_reviewed_file_change(
     context: &ToolContext,
     file_path: &str,
-    target_path: &Path,
+    target_path: impl AsRef<Path>,
     next_content: &str,
 ) -> Result<ToolResult> {
-    let previous = load_existing_file(target_path)?;
+    let previous = load_existing_file(target_path.as_ref())?;
     if previous == next_content {
         return Ok(ToolResult::ok(format!("No changes needed for {file_path}")));
     }
@@ -41,14 +41,14 @@ pub async fn apply_reviewed_file_change(
     let diff = build_unified_diff(file_path, &previous, next_content);
     if let Some(permissions) = &context.permissions {
         permissions
-            .ensure_edit(target_path.to_string_lossy().as_ref(), &diff)
+            .ensure_edit(target_path.as_ref().to_string_lossy().as_ref(), &diff)
             .await?;
     }
 
-    if let Some(parent) = target_path.parent() {
+    if let Some(parent) = target_path.as_ref().parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(target_path, next_content)?;
+    fs::write(target_path.as_ref(), next_content)?;
 
     Ok(ToolResult::ok(format!(
         "Applied reviewed changes to {file_path}"
