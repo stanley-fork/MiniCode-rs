@@ -10,16 +10,58 @@ use std::io::IsTerminal;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
+use clap::{Parser, Subcommand};
 use minicode_core::config::load_runtime_config;
 use minicode_core::types::ModelAdapter;
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "minicode",
+    version,
+    about = "MiniCode 命令行",
+    disable_help_subcommand = true
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    Install {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        _args: Vec<String>,
+    },
+    Mcp {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    Skills {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    Help,
+}
 
 fn is_interactive_terminal() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
-fn should_force_tui(argv: &[String]) -> bool {
-    argv.iter().any(|x| x == "--tui")
-        || std::env::var("MINI_CODE_FORCE_TUI").ok().as_deref() == Some("1")
+fn command_to_management_argv(command: &Commands) -> Option<Vec<String>> {
+    match command {
+        Commands::Mcp { args } => {
+            let mut argv = vec!["mcp".to_string()];
+            argv.extend(args.iter().cloned());
+            Some(argv)
+        }
+        Commands::Skills { args } => {
+            let mut argv = vec!["skills".to_string()];
+            argv.extend(args.iter().cloned());
+            Some(argv)
+        }
+        Commands::Help => Some(vec!["help".to_string()]),
+        Commands::Install { .. } => None,
+    }
 }
 
 #[tokio::main]
@@ -32,14 +74,17 @@ async fn main() {
 
 async fn real_main() -> Result<()> {
     let cwd = std::env::current_dir()?;
-    let argv = std::env::args().skip(1).collect::<Vec<_>>();
+    let cli = Cli::parse();
 
-    if argv.first().map(|x| x.as_str()) == Some("install") {
+    if matches!(cli.command, Some(Commands::Install { .. })) {
         run_install_wizard(&cwd)?;
         return Ok(());
     }
 
-    if maybe_handle_management_command(&cwd, &argv).await? {
+    if let Some(command) = &cli.command
+        && let Some(management_argv) = command_to_management_argv(command)
+        && maybe_handle_management_command(&cwd, &management_argv).await?
+    {
         return Ok(());
     }
 
@@ -54,22 +99,9 @@ async fn real_main() -> Result<()> {
             Arc::new(AnthropicModelAdapter::new(tools.clone(), cwd.clone()))
         };
 
-    let force_tui = should_force_tui(&argv);
-
     let stdin_tty = std::io::stdin().is_terminal();
     let stdout_tty = std::io::stdout().is_terminal();
-    let interactive = if force_tui {
-        if !(stdin_tty && stdout_tty) {
-            return Err(anyhow!(
-                "--tui 已指定，但当前终端不支持 TUI（stdin_tty={}, stdout_tty={}）。",
-                stdin_tty,
-                stdout_tty
-            ));
-        }
-        true
-    } else {
-        is_interactive_terminal()
-    };
+    let interactive = is_interactive_terminal();
 
     if !interactive {
         return Err(anyhow!(

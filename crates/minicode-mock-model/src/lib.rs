@@ -17,56 +17,48 @@ fn last_user_message(messages: &[ChatMessage]) -> String {
 }
 
 fn last_tool_message(messages: &[ChatMessage]) -> Option<(String, String, String)> {
-    messages
-        .iter()
-        .rev()
-        .find_map(|m| match m {
-            ChatMessage::ToolResult {
-                tool_use_id,
-                tool_name,
-                content,
-                ..
-            } => Some((tool_use_id.clone(), tool_name.clone(), content.clone())),
-            _ => None,
-        })
+    messages.iter().rev().find_map(|m| match m {
+        ChatMessage::ToolResult {
+            tool_use_id,
+            tool_name,
+            content,
+            ..
+        } => Some((tool_use_id.clone(), tool_name.clone(), content.clone())),
+        _ => None,
+    })
 }
 
 fn extract_latest_assistant_call(messages: &[ChatMessage]) -> Option<String> {
-    messages
-        .iter()
-        .rev()
-        .find_map(|m| match m {
-            ChatMessage::AssistantToolCall { tool_name, .. } => Some(tool_name.clone()),
-            _ => None,
-        })
+    messages.iter().rev().find_map(|m| match m {
+        ChatMessage::AssistantToolCall { tool_name, .. } => Some(tool_name.clone()),
+        _ => None,
+    })
 }
 
 #[async_trait]
 impl ModelAdapter for MockModelAdapter {
     async fn next(&self, messages: &[ChatMessage]) -> Result<AgentStep> {
         // 阶段 1: 如果有工具结果，根据前一个工具调用来生成响应
-        if let Some((_, _, content)) = last_tool_message(messages) {
-            if let Some(tool_name) = extract_latest_assistant_call(messages) {
-                let response = match tool_name.as_str() {
-                    "list_files" => {
-                        format!("目录内容如下：\n\n{}", content)
-                    }
-                    "read_file" => {
-                        format!("文件内容如下：\n\n{}", content)
-                    }
-                    "write_file" | "edit_file" | "patch_file" | "modify_file" => {
-                        content
-                    }
-                    _ => {
-                        format!("我拿到了工具结果：\n\n{}", content)
-                    }
-                };
-                return Ok(AgentStep::Assistant {
-                    content: response,
-                    kind: Some("final".to_string()),
-                    diagnostics: None,
-                });
-            }
+        if let Some((_, _, content)) = last_tool_message(messages)
+            && let Some(tool_name) = extract_latest_assistant_call(messages)
+        {
+            let response = match tool_name.as_str() {
+                "list_files" => {
+                    format!("目录内容如下：\n\n{}", content)
+                }
+                "read_file" => {
+                    format!("文件内容如下：\n\n{}", content)
+                }
+                "write_file" | "edit_file" | "patch_file" | "modify_file" => content,
+                _ => {
+                    format!("我拿到了工具结果：\n\n{}", content)
+                }
+            };
+            return Ok(AgentStep::Assistant {
+                content: response,
+                kind: Some("final".to_string()),
+                diagnostics: None,
+            });
         }
 
         // 阶段 2: 解析用户命令
@@ -101,7 +93,7 @@ impl ModelAdapter for MockModelAdapter {
         if user_text.starts_with("/grep ") {
             let payload = user_text.strip_prefix("/grep ").unwrap_or("").trim();
             let parts: Vec<&str> = payload.split("::").collect();
-            let pattern = parts.get(0).map(|s| s.trim()).unwrap_or("").to_string();
+            let pattern = parts.first().map(|s| s.trim()).unwrap_or("").to_string();
             let search_path = parts.get(1).map(|s| s.trim().to_string());
 
             if !pattern.is_empty() {
@@ -340,7 +332,10 @@ mod tests {
             AgentStep::ToolCalls { calls, .. } => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].tool_name, "grep_files");
-                assert_eq!(calls[0].input.get("pattern").unwrap().as_str(), Some("fn main"));
+                assert_eq!(
+                    calls[0].input.get("pattern").unwrap().as_str(),
+                    Some("fn main")
+                );
                 assert_eq!(calls[0].input.get("path").unwrap().as_str(), Some("src"));
             }
             _ => panic!("Expected ToolCalls"),
@@ -358,7 +353,10 @@ mod tests {
             AgentStep::ToolCalls { calls, .. } => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].tool_name, "read_file");
-                assert_eq!(calls[0].input.get("path").unwrap().as_str(), Some("README.md"));
+                assert_eq!(
+                    calls[0].input.get("path").unwrap().as_str(),
+                    Some("README.md")
+                );
             }
             _ => panic!("Expected ToolCalls"),
         }
@@ -375,7 +373,10 @@ mod tests {
             AgentStep::ToolCalls { calls, .. } => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].tool_name, "write_file");
-                assert_eq!(calls[0].input.get("path").unwrap().as_str(), Some("notes.txt"));
+                assert_eq!(
+                    calls[0].input.get("path").unwrap().as_str(),
+                    Some("notes.txt")
+                );
                 assert_eq!(
                     calls[0].input.get("content").unwrap().as_str(),
                     Some("hello world")
@@ -396,7 +397,10 @@ mod tests {
             AgentStep::ToolCalls { calls, .. } => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].tool_name, "edit_file");
-                assert_eq!(calls[0].input.get("path").unwrap().as_str(), Some("file.txt"));
+                assert_eq!(
+                    calls[0].input.get("path").unwrap().as_str(),
+                    Some("file.txt")
+                );
                 assert_eq!(calls[0].input.get("search").unwrap().as_str(), Some("old"));
                 assert_eq!(calls[0].input.get("replace").unwrap().as_str(), Some("new"));
             }
@@ -460,17 +464,36 @@ mod tests {
             AgentStep::ToolCalls { calls, .. } => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].tool_name, "patch_file");
-                assert_eq!(calls[0].input.get("path").unwrap().as_str(), Some("file.txt"));
+                assert_eq!(
+                    calls[0].input.get("path").unwrap().as_str(),
+                    Some("file.txt")
+                );
 
-                let replacements = calls[0].input.get("replacements").unwrap().as_array().unwrap();
+                let replacements = calls[0]
+                    .input
+                    .get("replacements")
+                    .unwrap()
+                    .as_array()
+                    .unwrap();
                 assert_eq!(replacements.len(), 2);
-                assert_eq!(replacements[0].get("search").unwrap().as_str(), Some("old1"));
-                assert_eq!(replacements[0].get("replace").unwrap().as_str(), Some("new1"));
-                assert_eq!(replacements[1].get("search").unwrap().as_str(), Some("old2"));
-                assert_eq!(replacements[1].get("replace").unwrap().as_str(), Some("new2"));
+                assert_eq!(
+                    replacements[0].get("search").unwrap().as_str(),
+                    Some("old1")
+                );
+                assert_eq!(
+                    replacements[0].get("replace").unwrap().as_str(),
+                    Some("new1")
+                );
+                assert_eq!(
+                    replacements[1].get("search").unwrap().as_str(),
+                    Some("old2")
+                );
+                assert_eq!(
+                    replacements[1].get("replace").unwrap().as_str(),
+                    Some("new2")
+                );
             }
             _ => panic!("Expected ToolCalls"),
         }
     }
 }
-

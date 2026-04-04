@@ -19,10 +19,10 @@ fn format_diagnostics(
     ignored: Option<&[String]>,
 ) -> String {
     let mut parts = vec![];
-    if let Some(s) = stop_reason {
-        if !s.is_empty() {
-            parts.push(format!("stop_reason={s}"));
-        }
+    if let Some(s) = stop_reason
+        && !s.is_empty()
+    {
+        parts.push(format!("stop_reason={s}"));
     }
     if let Some(b) = block_types
         && !b.is_empty()
@@ -246,7 +246,7 @@ pub async fn run_agent_turn(
         }
     }
 
-    if let Some(cb) = callbacks.as_deref_mut() {
+    if let Some(cb) = callbacks {
         cb.on_assistant_message("达到最大工具步数限制，已停止当前回合。");
     }
     messages.push(ChatMessage::Assistant {

@@ -89,7 +89,7 @@ pub(super) fn build_activity_items(state: &ScreenState) -> Vec<ListItem<'static>
             };
             items.push(ListItem::new(Line::from(vec![
                 Span::styled(
-                    format!("{}", task.status),
+                    task.status.clone(),
                     Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(" "),

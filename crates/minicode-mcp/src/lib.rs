@@ -155,7 +155,7 @@ impl StdioMcpClient {
 
         if let Some(envs) = &config.env {
             for (k, v) in envs {
-                cmd.env(k, v.to_string().trim_matches('"').to_string());
+                cmd.env(k, v.to_string().trim_matches('"'));
             }
         }
 
@@ -324,10 +324,9 @@ impl StdioMcpClient {
 
     fn read_resource(&mut self, uri: &str) -> anyhow::Result<ToolResult> {
         let result = self.request("resources/read", json!({ "uri": uri }))?;
-        Ok(ToolResult::ok(format!(
-            "{}",
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
-        )))
+        Ok(ToolResult::ok(
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string()),
+        ))
     }
 
     fn get_prompt(&mut self, name: &str, args: Value) -> anyhow::Result<ToolResult> {
@@ -338,10 +337,9 @@ impl StdioMcpClient {
                 "arguments": args,
             }),
         )?;
-        Ok(ToolResult::ok(format!(
-            "{}",
-            serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
-        )))
+        Ok(ToolResult::ok(
+            serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string()),
+        ))
     }
 
     fn close(&mut self) -> anyhow::Result<()> {
@@ -376,12 +374,13 @@ fn format_tool_result(result: Value) -> ToolResult {
     let mut parts = vec![];
     if let Some(content) = result.get("content").and_then(|v| v.as_array()) {
         for block in content {
-            if block.get("type").and_then(|v| v.as_str()) == Some("text") {
-                if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                    parts.push(text.to_string());
-                    continue;
-                }
+            if block.get("type").and_then(|v| v.as_str()) == Some("text")
+                && let Some(text) = block.get("text").and_then(|v| v.as_str())
+            {
+                parts.push(text.to_string());
+                continue;
             }
+
             parts.push(serde_json::to_string_pretty(block).unwrap_or_else(|_| block.to_string()));
         }
     }

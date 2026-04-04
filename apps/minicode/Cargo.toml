@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 anyhow = "1"
+clap = { version = "4", features = ["derive"] }
 minicode-agent-core = { path = "../../crates/minicode-agent-core" }
 tokio = { version = "1", features = ["full"] }
 minicode-core = { path = "../../crates/minicode-core" }

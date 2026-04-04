@@ -112,7 +112,7 @@ pub async fn try_handle_local_command(
 
     if input == "/config-paths" {
         return Ok(Some(
-            vec![
+            [
                 format!(
                     "mini-code settings: {}",
                     mini_code_settings_path().display()
@@ -198,7 +198,7 @@ pub async fn try_handle_local_command(
             "ANTHROPIC_API_KEY"
         };
         return Ok(Some(
-            vec![
+            [
                 format!("model: {}", runtime.model),
                 format!("baseUrl: {}", runtime.base_url),
                 format!("auth: {auth}"),

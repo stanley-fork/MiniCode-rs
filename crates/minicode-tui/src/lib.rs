@@ -182,14 +182,13 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                         KeyEvent {
                             code: KeyCode::Tab, ..
                         } => {
-                            if !visible_commands.is_empty() {
-                                if let Some(selected) = visible_commands
+                            if !visible_commands.is_empty()
+                                && let Some(selected) = visible_commands
                                     .get(state.selected_slash_index.min(visible_commands.len() - 1))
-                                {
-                                    state.input = selected.usage.to_string();
-                                    state.cursor_offset = char_len(&state.input);
-                                    state.selected_slash_index = 0;
-                                }
+                            {
+                                state.input = selected.usage.to_string();
+                                state.cursor_offset = char_len(&state.input);
+                                state.selected_slash_index = 0;
                             }
                         }
                         KeyEvent {
