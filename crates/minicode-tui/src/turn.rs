@@ -215,6 +215,13 @@ pub(crate) fn handle_approval_key(state: &mut ScreenState, key: KeyEvent) -> boo
     }
 
     let selected_decision = pending.request.choices[pending.selected_index].decision;
+    let restore_status_after_approval = |state: &mut ScreenState| {
+        state.status = state
+            .active_tool
+            .as_ref()
+            .map(|tool| format!("Running {tool}..."))
+            .or_else(|| Some("Thinking...".to_string()));
+    };
 
     if pending.awaiting_feedback {
         match key.code {
@@ -226,7 +233,7 @@ pub(crate) fn handle_approval_key(state: &mut ScreenState, key: KeyEvent) -> boo
                     });
                 }
                 state.pending_approval = None;
-                state.status = Some("Thinking...".to_string());
+                restore_status_after_approval(state);
                 return true;
             }
             KeyCode::Backspace => {
@@ -287,7 +294,7 @@ pub(crate) fn handle_approval_key(state: &mut ScreenState, key: KeyEvent) -> boo
                 });
             }
             state.pending_approval = None;
-            state.status = Some("Thinking...".to_string());
+            restore_status_after_approval(state);
             true
         }
         KeyCode::Esc => {
@@ -298,7 +305,7 @@ pub(crate) fn handle_approval_key(state: &mut ScreenState, key: KeyEvent) -> boo
                 });
             }
             state.pending_approval = None;
-            state.status = Some("Thinking...".to_string());
+            restore_status_after_approval(state);
             true
         }
         _ => false,
@@ -416,10 +423,14 @@ pub(crate) async fn handle_submit(
             let _ = tx.send(TurnEvent::ToolDone(result));
         });
 
+        let mut tool_done = false;
         while state.is_busy {
             while let Ok(event) = rx.try_recv() {
+                if matches!(event, TurnEvent::ToolDone(_)) {
+                    tool_done = true;
+                }
                 let _ = apply_turn_event(state, event);
-                if state.pending_approval.is_none() {
+                if tool_done {
                     state.is_busy = false;
                 }
             }
