@@ -1,9 +1,9 @@
 use anyhow::Result;
-
-use crate::config::{
+use minicode_core::config::{
     MiniCodeSettings, claude_settings_path, load_runtime_config, mini_code_mcp_path,
     mini_code_permissions_path, mini_code_settings_path, save_minicode_settings,
 };
+
 use crate::tool::ToolRegistry;
 
 pub struct SlashCommand {

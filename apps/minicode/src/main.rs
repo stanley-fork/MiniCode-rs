@@ -2,36 +2,28 @@ mod agent_loop;
 mod anthropic_adapter;
 mod background_tasks;
 mod cli_commands;
-mod config;
-mod file_review;
-mod history;
 mod install;
 mod local_tool_shortcuts;
 mod manage_cli;
-mod mcp;
 mod mock_model;
 mod permissions;
-mod prompt;
-mod skills;
 mod tool;
 mod tools;
 mod tui;
-mod types;
-mod workspace;
 
 use std::io::IsTerminal;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
+use minicode_core::config::load_runtime_config;
+use minicode_core::types::ModelAdapter;
 
 use anthropic_adapter::AnthropicModelAdapter;
-use config::load_runtime_config;
 use manage_cli::maybe_handle_management_command;
 use mock_model::MockModelAdapter;
 use permissions::PermissionManager;
 use tools::create_default_tool_registry;
 use tui::{TuiAppArgs, run_tui_app};
-use types::ModelAdapter;
 
 fn is_interactive_terminal() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()

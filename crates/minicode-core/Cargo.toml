@@ -1,0 +1,16 @@
+[package]
+name = "minicode-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+minicode-config = { path = "../minicode-config" }
+minicode-history = { path = "../minicode-history" }
+minicode-prompt = { path = "../minicode-prompt" }
+minicode-types = { path = "../minicode-types" }
+
+[lints]
+workspace = true

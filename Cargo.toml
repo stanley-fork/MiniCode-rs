@@ -1,5 +1,23 @@
 [workspace]
-members = ["apps/minicode"]
+members = [
+    "apps/minicode",
+    "crates/minicode-agent-core",
+    "crates/minicode-core",
+    "crates/minicode-config",
+    "crates/minicode-history",
+    "crates/minicode-install",
+    "crates/minicode-manage",
+    "crates/minicode-mock-model",
+    "crates/minicode-permissions",
+    "crates/minicode-prompt",
+    "crates/minicode-shortcuts",
+    "crates/minicode-skills",
+    "crates/minicode-mcp",
+    "crates/minicode-tool",
+    "crates/minicode-types",
+    "crates/minicode-tools-runtime",
+    "crates/minicode-workspace",
+]
 resolver = "2"
 
 [workspace.package]

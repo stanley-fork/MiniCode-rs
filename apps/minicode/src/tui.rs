@@ -13,6 +13,10 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use minicode_core::config::RuntimeConfig;
+use minicode_core::history::{load_history_entries, save_history_entries};
+use minicode_core::prompt::build_system_prompt;
+use minicode_core::types::{ChatMessage, ModelAdapter};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -27,16 +31,12 @@ use unicode_width::UnicodeWidthStr;
 use crate::agent_loop::{AgentTurnCallbacks, run_agent_turn};
 use crate::background_tasks::list_background_tasks;
 use crate::cli_commands::{SLASH_COMMANDS, find_matching_slash_commands, try_handle_local_command};
-use crate::config::RuntimeConfig;
-use crate::history::{load_history_entries, save_history_entries};
 use crate::local_tool_shortcuts::parse_local_tool_shortcut;
 use crate::permissions::{
     PermissionDecision, PermissionManager, PermissionPromptHandler, PermissionPromptKind,
     PermissionPromptRequest, PermissionPromptResult,
 };
-use crate::prompt::build_system_prompt;
 use crate::tool::{ToolContext, ToolRegistry};
-use crate::types::{ChatMessage, ModelAdapter};
 
 struct TerminalGuard;
 

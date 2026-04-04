@@ -1,0 +1,19 @@
+[package]
+name = "minicode-tool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+futures = "0.3"
+jsonschema = "0.18"
+minicode-core = { path = "../minicode-core" }
+minicode-permissions = { path = "../minicode-permissions" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

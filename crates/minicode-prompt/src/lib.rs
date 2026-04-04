@@ -1,6 +1,26 @@
 use std::path::Path;
 
-use crate::tool::{McpServerSummary, SkillSummary};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SkillSummary {
+    pub name: String,
+    pub description: String,
+    pub path: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpServerSummary {
+    pub name: String,
+    pub command: String,
+    pub status: String,
+    pub tool_count: usize,
+    pub error: Option<String>,
+    pub protocol: Option<String>,
+    pub resource_count: Option<usize>,
+    pub prompt_count: Option<usize>,
+}
 
 fn maybe_read(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()

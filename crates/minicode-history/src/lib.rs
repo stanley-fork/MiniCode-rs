@@ -1,9 +1,8 @@
 use std::fs;
 
 use anyhow::Result;
+use minicode_config::mini_code_history_path;
 use serde::{Deserialize, Serialize};
-
-use crate::config::mini_code_history_path;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct HistoryFile {
@@ -37,6 +36,9 @@ pub fn save_history_entries(entries: &[String]) -> Result<()> {
         entries[entries.len() - keep..].to_vec()
     };
     let payload = HistoryFile { entries: slice };
-    fs::write(path, format!("{}\n", serde_json::to_string_pretty(&payload)?))?;
+    fs::write(
+        path,
+        format!("{}\n", serde_json::to_string_pretty(&payload)?),
+    )?;
     Ok(())
 }

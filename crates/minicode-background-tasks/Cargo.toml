@@ -1,0 +1,14 @@
+[package]
+name = "minicode-background-tasks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+minicode-tool = { path = "../minicode-tool" }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[lints]
+workspace = true

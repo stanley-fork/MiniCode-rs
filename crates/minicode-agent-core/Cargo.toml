@@ -1,0 +1,25 @@
+[package]
+name = "minicode-agent-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = "1"
+async-trait = "0.1"
+httpdate = "1"
+minicode-core = { path = "../minicode-core" }
+minicode-tool = { path = "../minicode-tool" }
+rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time"] }
+
+[lints]
+workspace = true
