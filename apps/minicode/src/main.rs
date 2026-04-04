@@ -20,7 +20,6 @@ async fn main() {
 
 /// 异步主程序逻辑：解析参数、初始化运行时并启动 TUI
 async fn run() -> Result<()> {
-    verify_interactive_terminal()?;
     let cwd = std::env::current_dir()?;
     let cli = Cli::parse();
 
@@ -92,6 +91,8 @@ async fn launch_tui_app(
     runtime: Option<RuntimeConfig>,
     tools: Arc<ToolRegistry>,
 ) -> Result<()> {
+    verify_interactive_terminal()?;
+
     set_active_session_context(cwd.as_ref(), session_id.clone());
 
     let model: Arc<dyn ModelAdapter> = if is_mock_mode() {

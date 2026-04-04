@@ -48,20 +48,12 @@ fn get_env_string(
         .filter(|x| !x.trim().is_empty())
 }
 
-/// 生成可执行启动脚本并赋予执行权限。
-fn create_launcher_script(
-    launcher_path: impl AsRef<Path>,
-    binary_path: impl AsRef<Path>,
-) -> Result<()> {
-    let script = format!(
-        "#!/usr/bin/env bash\nset -euo pipefail\n\nexec \"{}\" \"$@\"\n",
-        binary_path.as_ref().display()
-    );
-
-    std::fs::write(launcher_path.as_ref(), script)?;
-    let mut perms = std::fs::metadata(launcher_path.as_ref())?.permissions();
+/// 拷贝当前可执行文件到目标路径，并设置可执行权限。
+fn copy_launcher_exe(launcher_path: impl AsRef<Path>, binary_path: impl AsRef<Path>) -> Result<()> {
+    std::fs::copy(&binary_path, &launcher_path)?;
+    let mut perms = std::fs::metadata(&launcher_path)?.permissions();
     perms.set_mode(0o755);
-    std::fs::set_permissions(launcher_path.as_ref(), perms)?;
+    std::fs::set_permissions(&launcher_path, perms)?;
     Ok(())
 }
 
@@ -139,7 +131,7 @@ pub fn run_install_wizard(cwd: impl AsRef<Path>) -> Result<()> {
 
     let launcher_path = target_bin.join("minicode");
     let binary_path = std::env::current_exe()?;
-    create_launcher_script(&launcher_path, &binary_path)?;
+    copy_launcher_exe(&launcher_path, &binary_path)?;
 
     println!();
     println!("Installation complete.");

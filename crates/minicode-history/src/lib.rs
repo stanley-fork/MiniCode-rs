@@ -168,24 +168,10 @@ pub struct SessionMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TurnRecord {
-    pub turn_id: String,
-    pub turn_number: usize,
-    pub timestamp: String,  // ISO 8601
-    pub input_type: String, // "user", "tool", "system"
-    pub input: String,
-    #[serde(default)]
-    pub tools_used: Vec<String>,
-    pub duration_ms: u64,
-    pub status: String, // "success", "error"
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionRecord {
     pub session_id: String,
     pub metadata: SessionMetadata,
     pub messages: Vec<ChatMessage>,
-    pub turns: Vec<TurnRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,7 +210,6 @@ pub fn save_session(cwd: impl AsRef<Path>, session: &SessionRecord) -> Result<()
     let conv_path = project_session_conversation_path(cwd.as_ref(), &session.session_id);
     let conversation = serde_json::json!({
         "messages": session.messages,
-        "turns": session.turns,
     });
     fs::write(
         conv_path,
@@ -306,22 +291,18 @@ pub fn load_session(cwd: impl AsRef<Path>, session_id: &str) -> Result<SessionRe
     };
 
     let conv_path = project_session_conversation_path(cwd.as_ref(), session_id);
-    let (messages, turns): (Vec<ChatMessage>, Vec<TurnRecord>) = if conv_path.exists() {
+    let messages: Vec<ChatMessage> = if conv_path.exists() {
         let content = fs::read_to_string(conv_path)?;
         let data: serde_json::Value = serde_json::from_str(&content)?;
-        (
-            serde_json::from_value(data.get("messages").cloned().unwrap_or_default())?,
-            serde_json::from_value(data.get("turns").cloned().unwrap_or_default())?,
-        )
+        serde_json::from_value(data.get("messages").cloned().unwrap_or_default())?
     } else {
-        (vec![], vec![])
+        vec![]
     };
 
     Ok(SessionRecord {
         session_id: session_id.to_string(),
         metadata,
         messages,
-        turns,
     })
 }
 

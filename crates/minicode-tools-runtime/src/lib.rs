@@ -1025,7 +1025,10 @@ fn remove_block_like(text: &str, start_tag: &str, end_tag: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     loop {
-        let Some(start_pos) = rest.to_ascii_lowercase().find(&start_tag.to_ascii_lowercase()) else {
+        let Some(start_pos) = rest
+            .to_ascii_lowercase()
+            .find(&start_tag.to_ascii_lowercase())
+        else {
             out.push_str(rest);
             break;
         };

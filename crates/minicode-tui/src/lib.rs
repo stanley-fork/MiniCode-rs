@@ -357,7 +357,6 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
         session_id: session_id().clone(),
         metadata,
         messages,
-        turns: vec![],
     };
 
     let _ = minicode_history::save_session(&args.cwd, &session);
