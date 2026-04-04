@@ -282,6 +282,32 @@ fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<Line<'stati
         .as_ref()
         .map(|x| x.model.clone())
         .unwrap_or_else(|| "(unconfigured)".to_string());
+    let provider = args
+        .runtime
+        .as_ref()
+        .map(|x| {
+            x.base_url
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .split('/')
+                .next()
+                .unwrap_or("custom")
+                .to_string()
+        })
+        .unwrap_or_else(|| "offline".to_string());
+    let auth = args
+        .runtime
+        .as_ref()
+        .map(|x| {
+            if x.auth_token.is_some() {
+                "auth_token"
+            } else if x.api_key.is_some() {
+                "api_key"
+            } else {
+                "none"
+            }
+        })
+        .unwrap_or("none");
     let recent = state
         .recent_tools
         .iter()
@@ -294,7 +320,7 @@ fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<Line<'stati
     vec![
         Line::from(vec![
             Span::styled(
-                "项目",
+                "project",
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
@@ -303,32 +329,51 @@ fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<Line<'stati
             Span::raw(args.cwd.display().to_string()),
             Span::raw("   "),
             Span::styled(
-                "模型",
+                "provider",
+                Style::default()
+                    .fg(Color::LightBlue)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::raw(provider),
+            Span::raw("   "),
+            Span::styled(
+                "model",
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
             Span::raw(model),
+            Span::raw("   "),
+            Span::styled(
+                "auth",
+                Style::default()
+                    .fg(Color::LightYellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::raw(auth),
         ]),
         Line::from(vec![
             Span::styled(
-                "会话",
+                "session",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(format!(
-                " messages={} transcript={} skills={} mcp={}",
+                " messages={} events={} skills={} mcp={}",
                 state.message_count,
                 state.transcript.len(),
                 args.tools.get_skills().len(),
                 args.tools.get_mcp_servers().len()
             )),
+            Span::raw(" | local"),
         ]),
         Line::from(vec![
             Span::styled(
-                "权限",
+                "permissions",
                 Style::default()
                     .fg(Color::LightMagenta)
                     .add_modifier(Modifier::BOLD),
@@ -382,7 +427,7 @@ fn build_activity_items(state: &ScreenState) -> Vec<ListItem<'static>> {
     if let Some(tool) = &state.active_tool {
         items.push(ListItem::new(Line::from(vec![
             Span::styled(
-                "Running",
+                "running",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -395,7 +440,7 @@ fn build_activity_items(state: &ScreenState) -> Vec<ListItem<'static>> {
     for (name, ok) in state.recent_tools.iter().rev().take(6) {
         items.push(ListItem::new(Line::from(vec![
             Span::styled(
-                if *ok { "OK" } else { "ERR" },
+                if *ok { "ok" } else { "err" },
                 Style::default()
                     .fg(if *ok { Color::Green } else { Color::Red })
                     .add_modifier(Modifier::BOLD),
@@ -406,14 +451,14 @@ fn build_activity_items(state: &ScreenState) -> Vec<ListItem<'static>> {
     }
 
     if items.is_empty() {
-        items.push(ListItem::new("暂无工具活动"));
+        items.push(ListItem::new("recent: none"));
     }
 
     let tasks = list_background_tasks();
     if !tasks.is_empty() {
         items.push(ListItem::new(Line::from("")));
         items.push(ListItem::new(Line::from(vec![Span::styled(
-            "后台任务",
+            "background",
             Style::default()
                 .fg(Color::LightCyan)
                 .add_modifier(Modifier::BOLD),
@@ -553,7 +598,7 @@ fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> Option<Vec<Cha
                 awaiting_feedback: false,
                 feedback: String::new(),
             });
-            state.status = Some("等待审批...".to_string());
+            state.status = Some("Approval required...".to_string());
             None
         }
         TurnEvent::ToolDone(result) => {
@@ -741,7 +786,7 @@ fn render_screen(
         let header = Paragraph::new(build_header_lines(args, state))
             .block(
                 Block::default()
-                    .title(" MiniCode-RS ")
+                    .title(" MiniCode ")
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .style(Style::default().fg(Color::LightCyan)),
@@ -750,7 +795,9 @@ fn render_screen(
         frame.render_widget(header, chunks[0]);
 
         let feed_lines = transcript_lines(&state.transcript);
-        let fallback = vec![Line::from("(暂无消息，输入 /help 查看命令)")];
+        let fallback = vec![Line::from(
+            "(no messages yet, enter /help to list commands)",
+        )];
         let feed = Paragraph::new(if feed_lines.is_empty() {
             fallback
         } else {
@@ -832,7 +879,7 @@ fn render_screen(
 
         let prompt_text = vec![
             Line::from(format!(
-                "status: {}{}{}",
+                "status: {}{}{}{}{}",
                 state.status.clone().unwrap_or_else(|| "Ready".to_string()),
                 state
                     .active_tool
@@ -843,6 +890,18 @@ fn render_screen(
                     " | busy".to_string()
                 } else {
                     String::new()
+                },
+                if state.transcript_scroll_offset > 0 {
+                    format!(" | scroll={}", state.transcript_scroll_offset)
+                } else {
+                    String::new()
+                },
+                {
+                    let running_shells = list_background_tasks()
+                        .into_iter()
+                        .filter(|task| task.status == "running")
+                        .count();
+                    format!(" | tools=on | skills=on | shells={}", running_shells)
                 }
             ))
             .style(
@@ -860,7 +919,7 @@ fn render_screen(
                 Span::raw(display_input),
             ]),
             Line::from(Span::styled(
-                "Enter 发送 | Tab 补全 | PgUp/PgDn 滚动 | Ctrl+C 退出",
+                "Enter submit | Tab complete | PgUp/PgDn scroll | Ctrl+C exit",
                 Style::default().fg(Color::DarkGray),
             )),
         ];
@@ -940,7 +999,7 @@ fn render_screen(
             if pending.awaiting_feedback {
                 lines.push(Line::from(""));
                 lines.push(Line::from(Span::styled(
-                    "请输入指导建议（Enter 提交，Esc 取消）：",
+                    "Enter guidance feedback (Enter to submit, Esc to cancel):",
                     Style::default().fg(Color::Yellow),
                 )));
                 lines.push(Line::from(Span::styled(
@@ -949,14 +1008,14 @@ fn render_screen(
                 )));
             }
             lines.push(Line::from(Span::styled(
-                "方向键/Tab切换，数字键直选，Enter确认，Esc拒绝",
+                "Arrow/Tab to move, number key to pick, Enter confirm, Esc deny",
                 Style::default().fg(Color::DarkGray),
             )));
 
             let dialog = Paragraph::new(lines)
                 .block(
                     Block::default()
-                        .title(" 审批 ")
+                        .title(" Approval Required ")
                         .borders(Borders::ALL)
                         .border_type(BorderType::Rounded)
                         .style(Style::default().fg(Color::LightRed)),

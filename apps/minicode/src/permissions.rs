@@ -289,7 +289,7 @@ impl PermissionManager {
             .prompt_or_confirm(
                 PermissionPromptRequest {
                     kind: PermissionPromptKind::Path,
-                    title: "mini-code 需要访问工作区外路径".to_string(),
+                    title: "mini-code wants path access outside cwd".to_string(),
                     details: vec![
                         format!("cwd: {}", self.workspace_root.display()),
                         format!("target: {}", target),
@@ -299,28 +299,28 @@ impl PermissionManager {
                     choices: vec![
                         PermissionChoice {
                             key: "y".to_string(),
-                            label: "仅本次允许".to_string(),
+                            label: "allow once".to_string(),
                             decision: PermissionDecision::AllowOnce,
                         },
                         PermissionChoice {
                             key: "a".to_string(),
-                            label: "始终允许此目录".to_string(),
+                            label: "allow this directory".to_string(),
                             decision: PermissionDecision::AllowAlways,
                         },
                         PermissionChoice {
                             key: "n".to_string(),
-                            label: "仅本次拒绝".to_string(),
+                            label: "deny once".to_string(),
                             decision: PermissionDecision::DenyOnce,
                         },
                         PermissionChoice {
                             key: "d".to_string(),
-                            label: "始终拒绝此目录".to_string(),
+                            label: "deny this directory".to_string(),
                             decision: PermissionDecision::DenyAlways,
                         },
                     ],
                 },
                 &format!(
-                    "允许访问工作区外路径吗？\n- cwd: {}\n- target: {}\n输入 y 允许，其他键拒绝: ",
+                    "Allow path access outside cwd?\n- cwd: {}\n- target: {}\nEnter y to allow, others to deny: ",
                     self.workspace_root.display(),
                     target
                 ),
@@ -400,9 +400,9 @@ impl PermissionManager {
                 PermissionPromptRequest {
                     kind: PermissionPromptKind::Command,
                     title: if force_reason.is_some() {
-                        "mini-code 想执行未登记命令".to_string()
+                        "mini-code wants to run an unregistered command".to_string()
                     } else {
-                        "mini-code 想执行高风险命令".to_string()
+                        "mini-code wants to run a high-risk command".to_string()
                     },
                     details: vec![
                         format!("cwd: {command_cwd}"),
@@ -413,28 +413,28 @@ impl PermissionManager {
                     choices: vec![
                         PermissionChoice {
                             key: "y".to_string(),
-                            label: "仅本次允许".to_string(),
+                            label: "allow once".to_string(),
                             decision: PermissionDecision::AllowOnce,
                         },
                         PermissionChoice {
                             key: "a".to_string(),
-                            label: "始终允许此命令".to_string(),
+                            label: "allow this command".to_string(),
                             decision: PermissionDecision::AllowAlways,
                         },
                         PermissionChoice {
                             key: "n".to_string(),
-                            label: "仅本次拒绝".to_string(),
+                            label: "deny once".to_string(),
                             decision: PermissionDecision::DenyOnce,
                         },
                         PermissionChoice {
                             key: "d".to_string(),
-                            label: "始终拒绝此命令".to_string(),
+                            label: "deny this command".to_string(),
                             decision: PermissionDecision::DenyAlways,
                         },
                     ],
                 },
                 &format!(
-                    "检测到需要审批的命令，是否允许执行？\n- command: {}\n- reason: {}\n输入 y 允许，其他键拒绝: ",
+                    "Command requires approval. Allow execution?\n- command: {}\n- reason: {}\nEnter y to allow, others to deny: ",
                     signature,
                     reason.unwrap_or_default()
                 ),
@@ -503,7 +503,7 @@ impl PermissionManager {
             .prompt_or_confirm(
                 PermissionPromptRequest {
                     kind: PermissionPromptKind::Edit,
-                    title: "mini-code 将应用文件修改".to_string(),
+                    title: "mini-code will apply file edits".to_string(),
                     details: vec![
                         format!("target: {normalized_target}"),
                         String::new(),
@@ -513,43 +513,43 @@ impl PermissionManager {
                     choices: vec![
                         PermissionChoice {
                             key: "1".to_string(),
-                            label: "仅本次应用".to_string(),
+                            label: "allow once".to_string(),
                             decision: PermissionDecision::AllowOnce,
                         },
                         PermissionChoice {
                             key: "2".to_string(),
-                            label: "本轮允许此文件".to_string(),
+                            label: "allow this file for this turn".to_string(),
                             decision: PermissionDecision::AllowTurn,
                         },
                         PermissionChoice {
                             key: "3".to_string(),
-                            label: "本轮允许全部修改".to_string(),
+                            label: "allow all edits this turn".to_string(),
                             decision: PermissionDecision::AllowAllTurn,
                         },
                         PermissionChoice {
                             key: "4".to_string(),
-                            label: "始终允许此文件".to_string(),
+                            label: "always allow this file".to_string(),
                             decision: PermissionDecision::AllowAlways,
                         },
                         PermissionChoice {
                             key: "5".to_string(),
-                            label: "仅本次拒绝".to_string(),
+                            label: "deny once".to_string(),
                             decision: PermissionDecision::DenyOnce,
                         },
                         PermissionChoice {
                             key: "6".to_string(),
-                            label: "拒绝并提供指导".to_string(),
+                            label: "deny with feedback".to_string(),
                             decision: PermissionDecision::DenyWithFeedback,
                         },
                         PermissionChoice {
                             key: "7".to_string(),
-                            label: "始终拒绝此文件".to_string(),
+                            label: "always deny this file".to_string(),
                             decision: PermissionDecision::DenyAlways,
                         },
                     ],
                 },
                 &format!(
-                    "允许修改文件吗？\n- file: {}\n输入 y 允许，其他键拒绝。\n",
+                    "Allow file edit?\n- file: {}\nEnter y to allow, others to deny.\n",
                     normalized_target
                 ),
                 PermissionDecision::AllowOnce,
