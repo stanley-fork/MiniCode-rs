@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct McpServerConfig {
@@ -50,7 +51,7 @@ fn active_session_cell() -> &'static Mutex<Option<ActiveSessionContext>> {
 
 /// 设置当前进程内的活动会话上下文。
 pub fn set_active_session_context(cwd: PathBuf, session_id: String) {
-    if let Ok(mut slot) = active_session_cell().lock() {
+    if let Ok(mut slot) = active_session_cell().try_lock() {
         *slot = Some(ActiveSessionContext { cwd, session_id });
     }
 }
@@ -58,7 +59,7 @@ pub fn set_active_session_context(cwd: PathBuf, session_id: String) {
 /// 获取当前进程内的活动会话上下文。
 pub fn get_active_session_context() -> Option<ActiveSessionContext> {
     active_session_cell()
-        .lock()
+        .try_lock()
         .ok()
         .and_then(|slot| slot.clone())
 }

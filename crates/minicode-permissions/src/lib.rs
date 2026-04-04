@@ -4,11 +4,12 @@ use std::future::Future;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use minicode_core::config::{get_active_session_context, project_session_permissions_path};
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct PermissionStore {
@@ -112,7 +113,7 @@ impl std::fmt::Debug for PermissionManager {
                 "prompt_handler",
                 &self
                     .prompt_handler
-                    .lock()
+                    .try_lock()
                     .ok()
                     .and_then(|x| x.as_ref().map(|_| "<handler>")),
             )
@@ -154,7 +155,7 @@ impl PermissionManager {
 
     /// 注册用于 UI 审批流程的异步回调。
     pub fn set_prompt_handler(&self, handler: PermissionPromptHandler) {
-        if let Ok(mut slot) = self.prompt_handler.lock() {
+        if let Ok(mut slot) = self.prompt_handler.try_lock() {
             *slot = Some(handler);
         }
     }
@@ -167,11 +168,7 @@ impl PermissionManager {
         fallback_allow: PermissionDecision,
         fallback_deny: PermissionDecision,
     ) -> Result<PermissionPromptResult> {
-        let handler = self
-            .prompt_handler
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone());
+        let handler = self.prompt_handler.lock().await.clone();
         if let Some(handler) = handler {
             let decision = handler(request).await;
             return Ok(decision);
@@ -185,7 +182,7 @@ impl PermissionManager {
 
     /// 开始新回合并重置回合级编辑权限。
     pub fn begin_turn(&self) {
-        if let Ok(mut state) = self.state.lock() {
+        if let Ok(mut state) = self.state.try_lock() {
             state.turn_allowed_edits.clear();
             state.turn_allow_all_edits = false;
         }
@@ -193,7 +190,7 @@ impl PermissionManager {
 
     /// 结束回合并清理回合级状态。
     pub fn end_turn(&self) {
-        if let Ok(mut state) = self.state.lock() {
+        if let Ok(mut state) = self.state.try_lock() {
             state.turn_allowed_edits.clear();
             state.turn_allow_all_edits = false;
         }
@@ -201,7 +198,7 @@ impl PermissionManager {
 
     /// 返回权限状态的简要摘要文本。
     pub fn get_summary(&self) -> Vec<String> {
-        let state = self.state.lock().ok();
+        let state = self.state.try_lock().ok();
         let mut summary = vec![format!("cwd: {}", self.workspace_root.display())];
         let empty_dirs = state
             .as_ref()
@@ -256,10 +253,7 @@ impl PermissionManager {
 
         let target = normalized.to_string_lossy().to_string();
         let (already_denied, already_allowed) = {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow!("Permission state lock poisoned"))?;
+            let state = self.state.lock().await;
 
             (
                 state.session_denied_paths.contains(&target)
@@ -336,10 +330,7 @@ impl PermissionManager {
             )
             .await?;
 
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow!("Permission state lock poisoned"))?;
+        let mut state = self.state.lock().await;
 
         match prompt_result.decision {
             PermissionDecision::AllowOnce => {
@@ -387,10 +378,7 @@ impl PermissionManager {
         }
 
         {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow!("Permission state lock poisoned"))?;
+            let state = self.state.lock().await;
             if state.session_denied_commands.contains(&signature)
                 || state.denied_command_patterns.contains(&signature)
             {
@@ -451,10 +439,7 @@ impl PermissionManager {
             )
             .await?;
 
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow!("Permission state lock poisoned"))?;
+        let mut state = self.state.lock().await;
 
         match prompt_result.decision {
             PermissionDecision::AllowOnce => {
@@ -488,10 +473,7 @@ impl PermissionManager {
             .to_string();
 
         {
-            let state = self
-                .state
-                .lock()
-                .map_err(|_| anyhow!("Permission state lock poisoned"))?;
+            let state = self.state.lock().await;
 
             if state.session_denied_edits.contains(&normalized_target)
                 || state.denied_edit_patterns.contains(&normalized_target)
@@ -566,10 +548,7 @@ impl PermissionManager {
             )
             .await?;
 
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| anyhow!("Permission state lock poisoned"))?;
+        let mut state = self.state.lock().await;
 
         match prompt_result.decision {
             PermissionDecision::AllowOnce => {
@@ -622,8 +601,8 @@ impl PermissionManager {
         }
         let state = self
             .state
-            .lock()
-            .map_err(|_| anyhow!("Permission state lock poisoned"))?;
+            .try_lock()
+            .map_err(|_| anyhow!("Permission state lock unavailable"))?;
         let store = PermissionStore {
             allowed_directory_prefixes: state.allowed_directory_prefixes.iter().cloned().collect(),
             denied_directory_prefixes: state.denied_directory_prefixes.iter().cloned().collect(),

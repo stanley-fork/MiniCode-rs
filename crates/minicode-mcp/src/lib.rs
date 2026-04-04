@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -15,6 +15,7 @@ use minicode_core::prompt::{McpServerSummary, SkillSummary};
 use minicode_tool::{Tool, ToolContext, ToolRegistry, ToolResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tokio::sync::Mutex;
 
 // `npx` based MCP servers (e.g. server-filesystem) can take noticeably longer
 // on first run while package resolution/download happens.
@@ -635,9 +636,7 @@ impl Tool for McpDynamicTool {
 
     /// 代理执行底层 MCP 工具调用。
     async fn run(&self, input: Value, _context: &ToolContext) -> ToolResult {
-        let Ok(mut client) = self.client.lock() else {
-            return ToolResult::err("Failed to lock MCP client");
-        };
+        let mut client = self.client.lock().await;
         match client.call_tool(&self.tool_name, input) {
             Ok(result) => result,
             Err(err) => ToolResult::err(err.to_string()),
@@ -740,9 +739,7 @@ impl Tool for ReadMcpResourceTool {
         let Some(client) = self.clients.get(server) else {
             return ToolResult::err(format!("Unknown MCP server: {}", server));
         };
-        let Ok(mut inner) = client.lock() else {
-            return ToolResult::err("Failed to lock MCP client");
-        };
+        let mut inner = client.lock().await;
         match inner.read_resource(uri) {
             Ok(v) => v,
             Err(err) => ToolResult::err(err.to_string()),
@@ -862,9 +859,7 @@ impl Tool for GetMcpPromptTool {
         let Some(client) = self.clients.get(server) else {
             return ToolResult::err(format!("Unknown MCP server: {}", server));
         };
-        let Ok(mut inner) = client.lock() else {
-            return ToolResult::err("Failed to lock MCP client");
-        };
+        let mut inner = client.lock().await;
         match inner.get_prompt(name, args) {
             Ok(v) => v,
             Err(err) => ToolResult::err(err.to_string()),
@@ -1089,9 +1084,8 @@ pub async fn create_mcp_backed_tools(
             let closers = closers.clone();
             let fut: BoxFuture<'static, ()> = Box::pin(async move {
                 for client in closers.iter() {
-                    if let Ok(mut inner) = client.lock() {
-                        let _ = inner.close();
-                    }
+                    let mut inner = client.lock().await;
+                    let _ = inner.close();
                 }
             });
             fut

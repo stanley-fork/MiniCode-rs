@@ -291,9 +291,7 @@ pub fn render_recovered_messages(messages: &[ChatMessage]) -> Vec<TranscriptLine
                 });
             }
             ChatMessage::AssistantToolCall {
-                tool_name,
-                input,
-                ..
+                tool_name, input, ..
             } => {
                 transcript.push(TranscriptLine {
                     kind: "tool".to_string(),
@@ -301,17 +299,10 @@ pub fn render_recovered_messages(messages: &[ChatMessage]) -> Vec<TranscriptLine
                 });
             }
             ChatMessage::ToolResult {
-                content,
-                is_error,
-                ..
+                content, is_error, ..
             } => {
                 transcript.push(TranscriptLine {
-                    kind: if *is_error {
-                        "tool:error"
-                    } else {
-                        "tool"
-                    }
-                    .to_string(),
+                    kind: if *is_error { "tool:error" } else { "tool" }.to_string(),
                     body: content.clone(),
                 });
             }

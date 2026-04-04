@@ -1,11 +1,12 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use jsonschema::{Draft, JSONSchema};
 use minicode_core::prompt::{McpServerSummary, SkillSummary};
 use minicode_permissions::PermissionManager;
 use serde_json::Value;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct ToolContext {
@@ -159,8 +160,7 @@ impl ToolRegistry {
     /// 返回当前所有已注册工具。
     pub fn list(&self) -> Vec<Arc<dyn Tool>> {
         self.state
-            .read()
-            .ok()
+            .try_read()
             .map(|state| state.tools.clone())
             .unwrap_or_default()
     }
@@ -168,8 +168,7 @@ impl ToolRegistry {
     /// 返回已发现技能摘要。
     pub fn get_skills(&self) -> Vec<SkillSummary> {
         self.state
-            .read()
-            .ok()
+            .try_read()
             .map(|state| state.skills.clone())
             .unwrap_or_default()
     }
@@ -177,15 +176,14 @@ impl ToolRegistry {
     /// 返回 MCP 服务连接摘要。
     pub fn get_mcp_servers(&self) -> Vec<McpServerSummary> {
         self.state
-            .read()
-            .ok()
+            .try_read()
             .map(|state| state.mcp_servers.clone())
             .unwrap_or_default()
     }
 
     /// 更新 MCP 服务摘要列表。
     pub fn set_mcp_servers(&self, mcp_servers: Vec<McpServerSummary>) {
-        if let Ok(mut state) = self.state.write() {
+        if let Ok(mut state) = self.state.try_write() {
             state.mcp_servers = mcp_servers;
         }
     }
@@ -197,7 +195,7 @@ impl ToolRegistry {
         mcp_servers: Vec<McpServerSummary>,
         disposer: Option<Arc<dyn Fn() -> futures::future::BoxFuture<'static, ()> + Send + Sync>>,
     ) {
-        if let Ok(mut state) = self.state.write() {
+        if let Ok(mut state) = self.state.try_write() {
             for tool in tools {
                 let name = tool.name().to_string();
                 if state.index.contains_key(&name) {
@@ -222,16 +220,13 @@ impl ToolRegistry {
         input: Value,
         context: &ToolContext,
     ) -> ToolResult {
-        let (tool, validation_error) = if let Ok(state) = self.state.read() {
-            let Some(idx) = state.index.get(tool_name) else {
-                return ToolResult::err(format!("Unknown tool: {tool_name}"));
-            };
-            let tool = state.tools[*idx].clone();
-            let validation_error = validate_tool_input(&state.validators[*idx], &input).err();
-            (tool, validation_error)
-        } else {
-            return ToolResult::err("Tool registry lock poisoned");
+        let state = self.state.read().await;
+        let Some(idx) = state.index.get(tool_name) else {
+            return ToolResult::err(format!("Unknown tool: {tool_name}"));
         };
+        let tool = state.tools[*idx].clone();
+        let validation_error = validate_tool_input(&state.validators[*idx], &input).err();
+        drop(state);
 
         if let Some(err) = validation_error {
             return ToolResult::err(err);
@@ -242,11 +237,9 @@ impl ToolRegistry {
 
     /// 释放注册表持有的外部资源。
     pub async fn dispose(&self) {
-        let disposer = self
-            .state
-            .read()
-            .ok()
-            .and_then(|state| state.disposer.clone());
+        let state = self.state.read().await;
+        let disposer = state.disposer.clone();
+        drop(state);
         if let Some(disposer) = disposer {
             disposer().await;
         }
