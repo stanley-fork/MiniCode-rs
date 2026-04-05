@@ -4,6 +4,7 @@ use minicode_tool::{Tool, ToolContext, ToolResult};
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
+use std::time::Duration;
 
 use crate::web::WEB_USER_AGENT;
 use crate::web::decode_html;
@@ -27,7 +28,7 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search the public web using DuckDuckGo Lite."
+        "Search the public web using DuckDuckGo Lite with a China-friendly fallback."
     }
 
     fn input_schema(&self) -> Value {
@@ -89,8 +90,44 @@ async fn search_duckduckgo_lite(
 ) -> Result<Vec<WebSearchResult>> {
     let client = reqwest::Client::builder()
         .user_agent(WEB_USER_AGENT)
+        .connect_timeout(Duration::from_secs(6))
+        .timeout(Duration::from_secs(12))
         .build()?;
 
+    let allowed = normalize_domain_list(&allowed_domains);
+    let blocked = normalize_domain_list(&blocked_domains);
+    let limit = max_results.clamp(1, 20);
+    let mut errors = vec![];
+
+    match search_ddg_with_client(&client, query).await {
+        Ok(mut parsed) => {
+            parsed.retain(|r| passes_domain_filter(&r.link, &allowed, &blocked));
+            if !parsed.is_empty() {
+                parsed.truncate(limit);
+                return Ok(parsed);
+            }
+            errors.push("duckduckgo returned no matching results".to_string());
+        }
+        Err(err) => errors.push(format!("duckduckgo failed: {err}")),
+    }
+
+    match search_baidu_with_client(&client, query).await {
+        Ok(mut parsed) => {
+            parsed.retain(|r| passes_domain_filter(&r.link, &allowed, &blocked));
+            parsed.truncate(limit);
+            Ok(parsed)
+        }
+        Err(err) => {
+            errors.push(format!("baidu fallback failed: {err}"));
+            anyhow::bail!("all search providers failed: {}", errors.join("; "));
+        }
+    }
+}
+
+async fn search_ddg_with_client(
+    client: &reqwest::Client,
+    query: &str,
+) -> Result<Vec<WebSearchResult>> {
     let mut url = reqwest::Url::parse("https://lite.duckduckgo.com/lite/")?;
     url.query_pairs_mut().append_pair("q", query);
 
@@ -104,17 +141,35 @@ async fn search_duckduckgo_lite(
         .send()
         .await?;
     if !response.status().is_success() {
-        anyhow::bail!("Search request failed with status {}", response.status());
+        anyhow::bail!("search request failed with status {}", response.status());
     }
 
     let html = response.text().await?;
-    let allowed = normalize_domain_list(&allowed_domains);
-    let blocked = normalize_domain_list(&blocked_domains);
+    Ok(parse_duckduckgo_lite(&html))
+}
 
-    let mut parsed = parse_duckduckgo_lite(&html);
-    parsed.retain(|r| passes_domain_filter(&r.link, &allowed, &blocked));
-    parsed.truncate(max_results.clamp(1, 20));
-    Ok(parsed)
+async fn search_baidu_with_client(
+    client: &reqwest::Client,
+    query: &str,
+) -> Result<Vec<WebSearchResult>> {
+    let mut url = reqwest::Url::parse("https://www.baidu.com/s")?;
+    url.query_pairs_mut().append_pair("wd", query);
+
+    let response = client
+        .get(url)
+        .header(
+            reqwest::header::ACCEPT,
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
+        .header(reqwest::header::ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9,en;q=0.8")
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        anyhow::bail!("search request failed with status {}", response.status());
+    }
+
+    let html = response.text().await?;
+    Ok(parse_baidu_results(&html))
 }
 
 fn parse_duckduckgo_lite(html: &str) -> Vec<WebSearchResult> {
@@ -162,6 +217,82 @@ fn parse_duckduckgo_lite(html: &str) -> Vec<WebSearchResult> {
             });
         }
         cursor = title_end;
+    }
+
+    results
+}
+
+fn parse_baidu_results(html: &str) -> Vec<WebSearchResult> {
+    let mut results = vec![];
+    let marker = "<h3";
+    let mut cursor = 0usize;
+
+    while let Some(h3_rel) = html[cursor..].find(marker) {
+        let h3_start = cursor + h3_rel;
+        let Some(h3_end_rel) = html[h3_start..].find("</h3>") else {
+            break;
+        };
+        let h3_end = h3_start + h3_end_rel + "</h3>".len();
+        let block = &html[h3_start..h3_end];
+
+        let Some(a_start_rel) = block.find("<a ") else {
+            cursor = h3_end;
+            continue;
+        };
+        let a_start = a_start_rel;
+        let href_marker = "href=\"";
+        let Some(href_pos_rel) = block[a_start..].find(href_marker) else {
+            cursor = h3_end;
+            continue;
+        };
+        let href_start = a_start + href_pos_rel + href_marker.len();
+        let Some(href_end_rel) = block[href_start..].find('"') else {
+            cursor = h3_end;
+            continue;
+        };
+        let href_end = href_start + href_end_rel;
+        let raw_href = &block[href_start..href_end];
+        let link = decode_html(raw_href).trim().to_string();
+
+        let Some(title_start_rel) = block[href_end..].find('>') else {
+            cursor = h3_end;
+            continue;
+        };
+        let title_start = href_end + title_start_rel + 1;
+        let Some(title_end_rel) = block[title_start..].find("</a>") else {
+            cursor = h3_end;
+            continue;
+        };
+        let title_end = title_start + title_end_rel;
+        let title = strip_tags(&decode_html(&block[title_start..title_end]));
+
+        if title.is_empty() || link.is_empty() {
+            cursor = h3_end;
+            continue;
+        }
+
+        let next_h3 = html[h3_end..]
+            .find(marker)
+            .map(|i| i + h3_end)
+            .unwrap_or(html.len());
+        let snippet_block = &html[h3_end..next_h3];
+        let snippet = extract_between(snippet_block, "<div class=\"c-abstract\">", "</div>")
+            .or_else(|| {
+                extract_between(
+                    snippet_block,
+                    "<span class=\"content-right_8Zs40\">",
+                    "</span>",
+                )
+            })
+            .map(|s| strip_tags(&decode_html(&s)))
+            .unwrap_or_default();
+
+        results.push(WebSearchResult {
+            title,
+            link,
+            snippet,
+        });
+        cursor = h3_end;
     }
 
     results

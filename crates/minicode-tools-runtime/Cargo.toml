@@ -11,7 +11,6 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 minicode-background-tasks = { workspace = true }
 minicode-config = { workspace = true }
-minicode-file-review = { workspace = true }
 minicode-mcp = { workspace = true }
 minicode-permissions = { workspace = true }
 minicode-skills = { workspace = true }
@@ -22,6 +21,7 @@ serde_json = { workspace = true }
 shell-words = { workspace = true }
 tokio = { workspace = true, features = ["process", "rt", "time"] }
 reqwest = { workspace = true, features = ["rustls"] }
+similar = { workspace = true }
 
 [lints]
 workspace = true
