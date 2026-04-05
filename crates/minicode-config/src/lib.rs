@@ -135,8 +135,12 @@ pub fn mini_code_history_path() -> PathBuf {
 }
 
 /// 返回权限存储文件路径。
-pub fn mini_code_permissions_path() -> PathBuf {
-    mini_code_dir().join("permissions.json")
+pub fn mini_code_permissions_path(cwd: impl AsRef<Path>) -> PathBuf {
+    get_active_session_context()
+        .filter(|ctx| ctx.cwd == cwd.as_ref())
+        .map(|ctx| ctx.session_id)
+        .map(|session_id| project_session_permissions_path(cwd, &session_id))
+        .unwrap_or("unknown".into())
 }
 
 /// 返回全局 MCP 配置文件路径。

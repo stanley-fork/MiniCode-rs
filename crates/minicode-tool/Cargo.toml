@@ -15,6 +15,7 @@ minicode-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
+anyhow = { workspace = true }
 
 [lints]
 workspace = true

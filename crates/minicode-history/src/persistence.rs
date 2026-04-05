@@ -10,8 +10,13 @@ use minicode_types::ChatMessage;
 
 use crate::{SessionIndex, SessionIndexEntry, SessionMetadata, SessionRecord};
 
-/// Save a complete session record to disk
+/// 把完整的会话记录保存到磁盘上，供后续恢复使用
 pub fn save_session(cwd: impl AsRef<Path>, session: &SessionRecord) -> Result<()> {
+    if session.messages.len() <= 1 {
+        // 只有一条消息（通常是系统初始化消息），不保存
+        return Ok(());
+    }
+
     let session_dir = project_sessions_dir(cwd.as_ref()).join(&session.session_id);
     fs::create_dir_all(&session_dir)?;
 

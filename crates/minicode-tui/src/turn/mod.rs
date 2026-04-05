@@ -52,21 +52,7 @@ pub(crate) async fn handle_submit(
     state.history_index = state.history.len();
     state.history_draft.clear();
 
-    if input == "/tools" {
-        state.transcript.push(TranscriptLine {
-            kind: "assistant".to_string(),
-            body: args
-                .tools
-                .list()
-                .iter()
-                .map(|tool| format!("{}: {}", tool.name(), tool.description()))
-                .collect::<Vec<_>>()
-                .join("\n"),
-        });
-        return Ok(false);
-    }
-
-    match try_handle_local_command(&input, &args.cwd, Some(&args.tools)).await {
+    match try_handle_local_command(&input, &args.cwd, &args.tools).await {
         Ok(Some(local)) => {
             state.transcript.push(TranscriptLine {
                 kind: "assistant".to_string(),
