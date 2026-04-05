@@ -119,6 +119,11 @@ pub(crate) fn render_screen(
             status_info.push_str(" | active=");
             status_info.push_str(active_tool);
         }
+        status_info.push_str(&if state.context_tokens_estimate > 1000 {
+            format!(" | ctx_tokens={}K", state.context_tokens_estimate / 1000)
+        } else {
+            format!(" | ctx_tokens={}", state.context_tokens_estimate)
+        });
 
         let input_box = chunks[2];
         let mut prompt_text = Vec::with_capacity(wrapped_input_lines.len());

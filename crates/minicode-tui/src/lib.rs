@@ -9,7 +9,8 @@ use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use minicode_history::{
-    initial_messages, initial_transcript, load_history_entries, session_id, session_start_time,
+    estimate_context_tokens, initial_messages, initial_transcript, load_history_entries,
+    session_id, session_start_time,
 };
 use minicode_types::TranscriptLine;
 use ratatui::Terminal;
@@ -74,6 +75,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
     let mut state = ScreenState {
         history: load_history_entries(),
         message_count: messages.len(),
+        context_tokens_estimate: estimate_context_tokens(&messages),
         session_id: session_id().clone(),
         session_start_time: session_start_time(),
         turn_count: 0,

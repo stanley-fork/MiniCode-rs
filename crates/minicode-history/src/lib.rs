@@ -4,6 +4,7 @@ mod persistence;
 mod query;
 mod recovery;
 mod runtime_state;
+mod token_estimate;
 
 pub use input_history::{load_history_entries, save_history_entries};
 pub use models::{SessionIndex, SessionIndexEntry, SessionMetadata, SessionRecord};
@@ -14,3 +15,4 @@ pub use runtime_state::{
     generate_session_id, init_initial_messages, init_initial_transcript, init_session_id,
     init_session_start_time, initial_messages, initial_transcript, session_id, session_start_time,
 };
+pub use token_estimate::estimate_context_tokens;

@@ -6,7 +6,7 @@ use anyhow::Result;
 use crossterm::event::{self};
 use minicode_agent_core::run_agent_turn;
 use minicode_cli_commands::{find_matching_slash_commands, try_handle_local_command};
-use minicode_history::save_history_entries;
+use minicode_history::{estimate_context_tokens, save_history_entries};
 use minicode_permissions::session_permissions;
 use minicode_prompt::build_system_prompt;
 use minicode_tool::{ToolContext, parse_local_tool_shortcut};
@@ -157,6 +157,7 @@ pub(crate) async fn handle_submit(
     messages.push(ChatMessage::User {
         content: input.clone(),
     });
+    state.context_tokens_estimate = estimate_context_tokens(messages);
     state.transcript.push(TranscriptLine {
         kind: "user".to_string(),
         body: input,
@@ -209,6 +210,7 @@ pub(crate) async fn handle_submit(
     }
 
     *messages = done_messages.unwrap_or_default();
+    state.context_tokens_estimate = estimate_context_tokens(messages);
     permissions.end_turn();
     state.is_busy = false;
     state.status = None;

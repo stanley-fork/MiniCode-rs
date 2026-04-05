@@ -61,6 +61,7 @@ pub(crate) struct ScreenState {
     #[allow(dead_code)]
     pub(crate) session_start_time: SystemTime,
     pub(crate) turn_count: usize,
+    pub(crate) context_tokens_estimate: usize,
 }
 
 impl Default for ScreenState {
@@ -86,6 +87,7 @@ impl Default for ScreenState {
             session_id: String::new(),
             session_start_time: SystemTime::now(),
             turn_count: 0,
+            context_tokens_estimate: 0,
         }
     }
 }
