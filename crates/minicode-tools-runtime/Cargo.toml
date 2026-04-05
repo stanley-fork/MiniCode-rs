@@ -15,7 +15,6 @@ minicode-mcp = { workspace = true }
 minicode-permissions = { workspace = true }
 minicode-skills = { workspace = true }
 minicode-tool = { workspace = true }
-minicode-workspace = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shell-words = { workspace = true }

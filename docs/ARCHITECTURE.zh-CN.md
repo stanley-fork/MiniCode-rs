@@ -20,8 +20,6 @@
 - `minicode-tool`：工具抽象核心（`Tool`、`ToolRegistry`、入参校验、执行分发）。
 - `minicode-tools-runtime`：内置运行时工具实现（`read_file`、`edit_file`、`run_command` 等）与注册表构建。
 - `minicode-mcp`：MCP 客户端启动与动态工具注入。
-- `minicode-workspace`：路径解析与工作区边界校验。
-- `minicode-file-review`：diff 生成与“审批后写入”流程。
 - `minicode-background-tasks`：后台 shell 任务状态管理。
 
 5. 策略与状态层
@@ -102,15 +100,6 @@
 - 定义工具运行时契约与结果结构。
 - 管理动态工具注册表、schema 编译/校验与执行分发。
 
-### `minicode-workspace`
-- 基于 cwd 解析工具目标路径。
-- 在无权限管理器时强制工作区边界。
-- 在有权限管理器时委托其做访问审批。
-
-### `minicode-file-review`
-- 生成统一 diff 预览。
-- 按“先审批后写入”流程应用文件改动。
-
 ### `minicode-background-tasks`
 - 注册并追踪后台 shell 任务（`task_id`、pid、状态、cwd）。
 - 基于进程存活情况刷新任务状态。
@@ -157,7 +146,6 @@
 3. 若需模型推理，调用 `minicode-agent-core::run_agent_turn`。
 4. Agent 通过 `minicode-tool::ToolRegistry` 执行工具。
 5. 运行时工具（`minicode-tools-runtime`）可能触发：
-- 文件访问（`minicode-workspace` + `minicode-file-review`）
 - 命令执行（受 `minicode-permissions` 审批）
 - MCP 工具调用（`minicode-mcp`）
 6. 事件持续回流到 TUI，直至产出最终助手消息。

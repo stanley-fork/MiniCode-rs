@@ -20,8 +20,6 @@ This document explains the role of each crate in the workspace and how they fit 
 - `minicode-tool`: core tool abstractions (`Tool`, `ToolRegistry`, validation, execution, disposal).
 - `minicode-tools-runtime`: built-in runtime tools (`read_file`, `edit_file`, `run_command`, etc.) and registry assembly.
 - `minicode-mcp`: MCP client/bootstrap and dynamic MCP-backed tool generation.
-- `minicode-workspace`: path resolution and workspace-bound path safety checks.
-- `minicode-file-review`: diff generation + reviewed file write flow.
 - `minicode-background-tasks`: in-memory tracking for background shell tasks.
 
 5. Policy & State Layer
@@ -102,15 +100,6 @@ This document explains the role of each crate in the workspace and how they fit 
 - Defines the runtime tool contract and result model.
 - Maintains dynamic tool registry, input schema compilation/validation, and execution dispatch.
 
-### `minicode-workspace`
-- Resolves tool paths relative to cwd.
-- Enforces workspace boundary when permission manager is absent.
-- Delegates access checks to permission manager when present.
-
-### `minicode-file-review`
-- Builds unified diffs for pending file edits.
-- Applies edits through permission-reviewed flow.
-
 ### `minicode-background-tasks`
 - Registers and tracks background shell tasks (`task_id`, pid, status, cwd).
 - Refreshes status from process liveness.
@@ -153,7 +142,6 @@ This document explains the role of each crate in the workspace and how they fit 
 3. If model turn is needed, TUI calls `minicode-agent-core::run_agent_turn`.
 4. Agent invokes tools through `minicode-tool::ToolRegistry`.
 5. Tool runtime (`minicode-tools-runtime`) may:
-- read/write files (`minicode-workspace`, `minicode-file-review`)
 - run commands (guarded by `minicode-permissions`)
 - call MCP tools (`minicode-mcp`)
 6. Events stream back to TUI transcript until final assistant output.

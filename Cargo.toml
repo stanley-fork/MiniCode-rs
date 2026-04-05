@@ -18,7 +18,6 @@ members = [
     "crates/minicode-tools-runtime",
     "crates/minicode-cli-commands",
     "crates/minicode-tui",
-    "crates/minicode-workspace",
 ]
 resolver = "2"
 
@@ -47,7 +46,6 @@ minicode-tools-runtime = { path = "crates/minicode-tools-runtime" }
 minicode-cli-commands = { path = "crates/minicode-cli-commands" }
 minicode-types = { path = "crates/minicode-types" }
 minicode-tui = { path = "crates/minicode-tui" }
-minicode-workspace = { path = "crates/minicode-workspace" }
 minicode-background-tasks = { path = "crates/minicode-background-tasks" }
 minicode-file-review = { path = "crates/minicode-file-review" }
 anyhow = "1.0.102"
@@ -69,7 +67,11 @@ reqwest = { version = "0.13.2", default-features = false }
 shell-words = "1.1.1"
 similar = "3.0.0"
 unicode-width = "0.2.2"
-rmcp = { version = "1.3.0", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
+rmcp = { version = "1.3.0", default-features = false, features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client-reqwest",
+] }
 http = "1.3.1"
 
 

@@ -1,9 +1,9 @@
 use crate::ToolContext;
 use crate::file::apply_reviewed_file_change;
+use crate::resolve_tool_path;
 use async_trait::async_trait;
 use minicode_tool::Tool;
 use minicode_tool::ToolResult;
-use minicode_workspace::resolve_tool_path;
 use serde_json::Value;
 use serde_json::json;
 
