@@ -187,17 +187,14 @@ async fn handle_history_command(cwd: impl AsRef<Path>, cmd: HistoryCommand) -> R
         HistoryCommand::Resume { session_id } => {
             match resolve_and_load_session(cwd.as_ref(), &session_id).await? {
                 Some((session_id, recovered_messages, initial_transcript)) => {
-                    let runtime = load_runtime_config(cwd.as_ref()).ok();
-                    let tools = Arc::new(
-                        create_default_tool_registry(cwd.as_ref(), runtime.as_ref()).await?,
-                    );
+                    let _ = load_runtime_config(cwd.as_ref()).ok();
+                    let tools = Arc::new(create_default_tool_registry(cwd.as_ref()).await?);
 
                     launch_tui_app(
                         cwd.as_ref(),
                         session_id,
                         Some(recovered_messages),
                         initial_transcript,
-                        runtime,
                         tools,
                     )
                     .await?;

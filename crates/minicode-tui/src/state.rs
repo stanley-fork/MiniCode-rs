@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use minicode_agent_core::AgentTurnCallbacks;
-use minicode_config::RuntimeConfig;
 use minicode_permissions::{PermissionPromptRequest, PermissionPromptResult};
 use minicode_tool::{ToolRegistry, ToolResult};
 use minicode_types::{ChatMessage, ModelAdapter, TranscriptLine};
@@ -93,7 +92,6 @@ impl Default for ScreenState {
 }
 
 pub struct TuiAppArgs {
-    pub runtime: Option<RuntimeConfig>,
     pub tools: Arc<ToolRegistry>,
     pub model: Arc<dyn ModelAdapter>,
     pub cwd: PathBuf,

@@ -8,6 +8,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use minicode_config::get_runtime_config;
 use minicode_history::{
     estimate_context_tokens, initial_messages, initial_transcript, load_history_entries,
     session_id, session_start_time,
@@ -347,7 +348,7 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
         created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         ended_at: Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
         duration_seconds,
-        model: args.runtime.as_ref().map(|r| r.model.clone()),
+        model: get_runtime_config().as_ref().map(|r| r.model.clone()),
         cwd: args.cwd.to_string_lossy().to_string(),
         turn_count: state.turn_count,
         user_input_count: state.message_count,

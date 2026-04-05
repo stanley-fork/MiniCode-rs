@@ -1,7 +1,7 @@
 use anyhow::Result;
 use minicode_config::{
-    claude_settings_path, load_runtime_config, mini_code_mcp_path, mini_code_permissions_path,
-    mini_code_settings_path,
+    MiniCodeSettings, claude_settings_path, load_runtime_config, mini_code_mcp_path,
+    mini_code_permissions_path, mini_code_settings_path, save_minicode_settings,
 };
 use minicode_tool::{TOOL_COMMANDS, ToolRegistry};
 
@@ -54,15 +54,6 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         },
     },
     SlashCommand {
-        prefix: "/model",
-        usage: "/model",
-        description: "显示当前模型。",
-        handler: |_, cwd, _| {
-            let runtime = load_runtime_config(cwd)?;
-            Ok(format!("current model: {}", runtime.model))
-        },
-    },
-    SlashCommand {
         prefix: "/model ",
         usage: "/model <model-name>",
         description: "保存模型覆盖到 ~/.mini-code/settings.json。",
@@ -73,9 +64,20 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
             }
             let mut runtime = load_runtime_config(cwd)?;
             runtime.model = model.to_string();
-            // Save the updated runtime config
-            // (Implementation for saving config would go here)
+            save_minicode_settings(MiniCodeSettings {
+                model: Some(model.to_string()),
+                ..Default::default()
+            })?;
             Ok(format!("Model updated to: {}", runtime.model))
+        },
+    },
+    SlashCommand {
+        prefix: "/model",
+        usage: "/model",
+        description: "显示当前模型。",
+        handler: |_, cwd, _| {
+            let runtime = load_runtime_config(cwd)?;
+            Ok(format!("current model: {}", runtime.model))
         },
     },
     SlashCommand {

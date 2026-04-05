@@ -20,6 +20,11 @@ struct RunCommandInput {
     cwd: Option<String>,
 }
 
+struct NormalizedCommandInput {
+    command: String,
+    args: Vec<String>,
+}
+
 #[derive(Default)]
 pub struct RunCommandTool;
 #[async_trait]
@@ -43,8 +48,8 @@ impl Tool for RunCommandTool {
             Err(err) => return ToolResult::err(err.to_string()),
         };
 
-        let effective_cwd = if let Some(cwd) = parsed.cwd {
-            match resolve_tool_path(context, &cwd, "list").await {
+        let effective_cwd = if let Some(cwd) = parsed.cwd.as_deref() {
+            match resolve_tool_path(context, cwd, "list").await {
                 Ok(v) => v,
                 Err(err) => return ToolResult::err(err.to_string()),
             }
@@ -52,39 +57,29 @@ impl Tool for RunCommandTool {
             std::path::PathBuf::from(&context.cwd)
         };
 
-        let (command, args) = if let Some(args) = parsed.args {
-            (parsed.command.trim().to_string(), args)
-        } else {
-            let parts = split_command_line(parsed.command.trim());
-            if parts.is_empty() {
-                return ToolResult::err("Command not allowed: empty command");
-            }
-            (parts[0].clone(), parts[1..].to_vec())
-        };
+        let normalized = normalize_command_input(&parsed);
+        if normalized.command.is_empty() {
+            return ToolResult::err("Command not allowed: empty command");
+        }
 
-        let use_shell = looks_like_shell_snippet(&parsed.command, &args);
-        let background = is_background_shell_snippet(&parsed.command, &args);
-        let known_command = is_allowed_command(&command);
+        let use_shell = looks_like_shell_snippet(&parsed.command, parsed.args.as_ref());
+        let background = is_background_shell_snippet(&parsed.command, parsed.args.as_ref());
+        let known_command = is_allowed_command(&normalized.command);
 
         let exec = if use_shell {
             "bash".to_string()
         } else {
-            command.clone()
+            normalized.command.clone()
         };
         let exec_args = if use_shell {
             let script = if background {
-                parsed
-                    .command
-                    .trim()
-                    .trim_end_matches('&')
-                    .trim()
-                    .to_string()
+                strip_trailing_background_operator(&parsed.command)
             } else {
                 parsed.command.clone()
             };
             vec!["-lc".to_string(), script]
         } else {
-            args.clone()
+            normalized.args.clone()
         };
 
         if let Some(perms) = &context.permissions {
@@ -97,12 +92,12 @@ impl Tool for RunCommandTool {
                         Some(EnsureCommandOptions {
                             force_prompt_reason: Some(format!(
                                 "Unknown command '{}' is not in the built-in read-only/development set",
-                                command
+                                normalized.command
                             )),
                         }),
                     )
                     .await
-            } else if use_shell || !is_read_only_command(&command) {
+            } else if use_shell || !is_read_only_command(&normalized.command) {
                 perms
                     .ensure_command(
                         &exec,
@@ -177,6 +172,32 @@ impl Tool for RunCommandTool {
     }
 }
 
+/// 归一化命令输入：优先使用显式 args；否则把单字符串拆分为 command + args。
+fn normalize_command_input(input: &RunCommandInput) -> NormalizedCommandInput {
+    if input.args.as_ref().is_some_and(|args| !args.is_empty()) {
+        return NormalizedCommandInput {
+            command: input.command.trim().to_string(),
+            args: input.args.clone().unwrap_or_default(),
+        };
+    }
+
+    let trimmed = input.command.trim();
+    if trimmed.is_empty() {
+        return NormalizedCommandInput {
+            command: String::new(),
+            args: Vec::new(),
+        };
+    }
+    let parts = split_command_line(trimmed);
+    let command = parts.first().cloned().unwrap_or_default();
+    let args = if parts.len() > 1 {
+        parts[1..].to_vec()
+    } else {
+        Vec::new()
+    };
+    NormalizedCommandInput { command, args }
+}
+
 /// 解析命令行字符串为命令与参数列表。
 fn split_command_line(command_line: &str) -> Vec<String> {
     shell_words::split(command_line).unwrap_or_else(|_| {
@@ -188,8 +209,8 @@ fn split_command_line(command_line: &str) -> Vec<String> {
 }
 
 /// 判断输入是否为需要 shell 执行的片段。
-fn looks_like_shell_snippet(command: &str, args: &[String]) -> bool {
-    if !args.is_empty() {
+fn looks_like_shell_snippet(command: &str, args: Option<&Vec<String>>) -> bool {
+    if args.is_some_and(|items| !items.is_empty()) {
         return false;
     }
     command.chars().any(|c| "|&;<>()$`".contains(c))
@@ -229,10 +250,15 @@ fn is_read_only_command(command: &str) -> bool {
 }
 
 /// 判断命令是否是后台 shell 片段。
-fn is_background_shell_snippet(command: &str, args: &[String]) -> bool {
-    if !args.is_empty() {
+fn is_background_shell_snippet(command: &str, args: Option<&Vec<String>>) -> bool {
+    if args.is_some_and(|items| !items.is_empty()) {
         return false;
     }
     let t = command.trim();
     t.ends_with('&') && !t.ends_with("&&")
+}
+
+/// 移除 shell 命令末尾用于后台运行的单个 `&`。
+fn strip_trailing_background_operator(command: &str) -> String {
+    command.trim().trim_end_matches('&').trim().to_string()
 }

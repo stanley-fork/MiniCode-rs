@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::sync::RwLock;
 
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
@@ -94,6 +95,11 @@ pub struct ActiveSessionContext {
     pub session_id: String,
 }
 
+fn runtime_config_cell() -> &'static RwLock<Option<RuntimeConfig>> {
+    static CELL: OnceLock<RwLock<Option<RuntimeConfig>>> = OnceLock::new();
+    CELL.get_or_init(|| RwLock::new(None))
+}
+
 fn active_session_cell() -> &'static Mutex<Option<ActiveSessionContext>> {
     static CELL: OnceLock<Mutex<Option<ActiveSessionContext>>> = OnceLock::new();
     CELL.get_or_init(|| Mutex::new(None))
@@ -132,6 +138,21 @@ pub fn mini_code_settings_path() -> PathBuf {
 /// 返回历史记录文件路径。
 pub fn mini_code_history_path() -> PathBuf {
     mini_code_dir().join("history.json")
+}
+
+/// 获取当前进程内缓存的运行时配置（若已初始化）。
+pub fn get_runtime_config() -> Option<RuntimeConfig> {
+    runtime_config_cell()
+        .read()
+        .ok()
+        .and_then(|slot| slot.clone())
+}
+
+/// 将运行时配置写入进程内缓存。
+pub fn set_runtime_config(config: RuntimeConfig) {
+    if let Ok(mut slot) = runtime_config_cell().write() {
+        *slot = Some(config);
+    }
 }
 
 /// 返回权限存储文件路径。
@@ -254,6 +275,18 @@ pub fn load_effective_settings(cwd: impl AsRef<Path>) -> Result<MiniCodeSettings
 
 /// 将更新内容合并后写回全局设置文件。
 pub fn save_minicode_settings(updates: MiniCodeSettings) -> Result<()> {
+    if let Some(model) = &updates.model
+        && let Some(mut guard) = runtime_config_cell().write().ok()
+        && let Some(runtime) = guard.as_mut()
+    {
+        runtime.model = model.to_string();
+    }
+    if let Some(max_output_tokens) = &updates.max_output_tokens
+        && let Some(mut guard) = runtime_config_cell().write().ok()
+        && let Some(runtime) = guard.as_mut()
+    {
+        runtime.max_output_tokens = Some(*max_output_tokens);
+    }
     let path = mini_code_settings_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -264,11 +297,12 @@ pub fn save_minicode_settings(updates: MiniCodeSettings) -> Result<()> {
         path,
         format!("{}\n", serde_json::to_string_pretty(&merged)?),
     )?;
+
     Ok(())
 }
 
-/// 从配置与环境变量构建运行时配置。
-pub fn load_runtime_config(cwd: impl AsRef<Path>) -> Result<RuntimeConfig> {
+/// 从配置与环境变量构建运行时配置（不读写单例缓存）。
+fn build_runtime_config(cwd: impl AsRef<Path>) -> Result<RuntimeConfig> {
     let effective = load_effective_settings(cwd)?;
     let mut env = std::env::vars().collect::<HashMap<_, _>>();
     if let Some(extra) = &effective.env {
@@ -321,6 +355,16 @@ pub fn load_runtime_config(cwd: impl AsRef<Path>) -> Result<RuntimeConfig> {
             claude_settings_path().display()
         ),
     })
+}
+
+/// 读取运行时配置：首次加载后缓存为进程级单例，后续直接返回缓存。
+pub fn load_runtime_config(cwd: impl AsRef<Path>) -> Result<RuntimeConfig> {
+    if let Some(cached) = get_runtime_config() {
+        return Ok(cached);
+    }
+    let runtime = build_runtime_config(cwd)?;
+    set_runtime_config(runtime.clone());
+    Ok(runtime)
 }
 
 /// 读取指定作用域（user/project）的 MCP 服务器配置。

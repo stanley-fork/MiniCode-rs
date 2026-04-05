@@ -1,3 +1,4 @@
+use minicode_config::get_runtime_config;
 use minicode_permissions::session_permissions;
 use minicode_types::PermissionSummaryItem;
 use ratatui::text::{Line, Span};
@@ -14,13 +15,12 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
         .into_iter()
         .filter(|task| task.status == "running")
         .count();
-    let model = args
-        .runtime
+    let runtime = get_runtime_config();
+    let model = runtime
         .as_ref()
         .map(|x| x.model.clone())
         .unwrap_or_else(|| "(unconfigured)".to_string());
-    let provider = args
-        .runtime
+    let provider = runtime
         .as_ref()
         .map(|x| {
             x.base_url
@@ -32,8 +32,7 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
                 .to_string()
         })
         .unwrap_or_else(|| "offline".to_string());
-    let auth = args
-        .runtime
+    let auth = runtime
         .as_ref()
         .map(|x| {
             if x.auth_token.is_some() {

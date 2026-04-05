@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use minicode_config::RuntimeConfig;
+use minicode_config::get_runtime_config;
 use minicode_mcp::{create_mcp_backed_tools, set_mcp_logging_enabled};
 use minicode_skills::discover_skills;
 use minicode_tool::{Tool, ToolContext, ToolRegistry};
@@ -20,10 +20,7 @@ pub fn set_mcp_startup_logging_enabled(enabled: bool) {
 }
 
 /// 创建默认工具注册表，并按配置注入 MCP 工具。
-pub async fn create_default_tool_registry(
-    cwd: &std::path::Path,
-    runtime: Option<&RuntimeConfig>,
-) -> Result<ToolRegistry> {
+pub async fn create_default_tool_registry(cwd: &std::path::Path) -> Result<ToolRegistry> {
     let skills = discover_skills(cwd);
     let mut tools: Vec<Arc<dyn Tool>> = vec![
         Arc::new(AskUserTool),
@@ -47,7 +44,7 @@ pub async fn create_default_tool_registry(
     ];
     let mut mcp_server_summaries = vec![];
     let mut mcp_disposer = None;
-    if let Some(runtime) = runtime {
+    if let Some(runtime) = get_runtime_config() {
         let mcp = create_mcp_backed_tools(cwd, &runtime.mcp_servers).await;
         tools.extend(mcp.tools);
         mcp_server_summaries = mcp.servers;

@@ -31,8 +31,8 @@ async fn run() -> Result<()> {
     }
 
     // 初始化运行时环境
-    let runtime = load_runtime_config(&cwd).ok();
-    let tools = Arc::new(create_default_tool_registry(&cwd, runtime.as_ref()).await?);
+    let _ = load_runtime_config(&cwd).ok();
+    let tools = Arc::new(create_default_tool_registry(&cwd).await?);
 
     // 处理会话选择或创建
     let (session_id, recovered_messages, initial_transcript) = if cli.resume
@@ -76,7 +76,6 @@ async fn run() -> Result<()> {
         session_id,
         recovered_messages,
         initial_transcript,
-        runtime,
         tools,
     )
     .await
@@ -88,7 +87,6 @@ async fn launch_tui_app(
     session_id: String,
     recovered_messages: Option<Vec<ChatMessage>>,
     initial_transcript: Vec<TranscriptLine>,
-    runtime: Option<RuntimeConfig>,
     tools: Arc<ToolRegistry>,
 ) -> Result<()> {
     verify_interactive_terminal()?;
@@ -132,7 +130,6 @@ async fn launch_tui_app(
     set_mcp_startup_logging_enabled(false);
 
     run_tui_app(TuiAppArgs {
-        runtime: runtime.clone(),
         tools: tools.clone(),
         model,
         cwd: cwd.as_ref().into(),
