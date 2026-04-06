@@ -1,12 +1,42 @@
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 
 use anyhow::Result;
 use minicode_config::{
     project_session_metadata_path, project_sessions_dir, project_sessions_index, runtime_store,
 };
+use serde::{Deserialize, Serialize};
 
-use crate::{SessionIndex, SessionIndexEntry, SessionMetadata};
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionMetadata {
+    pub session_id: String,
+    pub created_at: String,
+    pub ended_at: Option<String>,
+    pub model: Option<String>,
+    pub cwd: PathBuf,
+    pub turn_count: usize,
+    pub user_input_count: usize,
+    pub tool_call_count: usize,
+    #[serde(default)]
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionIndex {
+    pub sessions: Vec<SessionIndexEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionIndexEntry {
+    pub session_id: String,
+    pub created_at: String,
+    pub ended_at: Option<String>,
+    pub cwd: PathBuf,
+    pub turn_count: usize,
+    pub model: Option<String>,
+    pub status: String,
+}
 
 /// 把完整的会话记录保存到磁盘上，供后续恢复使用
 pub fn save_session_metadata(session: &SessionMetadata) -> Result<()> {

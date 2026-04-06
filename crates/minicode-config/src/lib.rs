@@ -123,7 +123,7 @@ pub fn save_minicode_settings(config: &RuntimeConfig) -> Result<()> {
 }
 
 /// 从配置与环境变量构建运行时配置（不读写单例缓存）。
-fn build_runtime_config(cwd: impl AsRef<Path>) -> Result<RuntimeConfig> {
+pub fn build_runtime_config(cwd: impl AsRef<Path>) -> Result<RuntimeConfig> {
     let mut config = config_from_file(cwd)?;
     let env = std::env::vars().collect::<HashMap<_, _>>();
 

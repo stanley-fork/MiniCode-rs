@@ -45,7 +45,7 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// 运行安装向导，配置 MiniCode
     #[command(
-        about = "Run installation wizard",
+        about = "运行安装向导",
         long_about = "交互式安装向导，帮助您配置 MiniCode 的初始设置
 
 包括：

@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use chrono::{DateTime, Utc};
 use minicode_agent_core::AgentTurnCallbacks;
 use minicode_permissions::{PermissionPromptRequest, PermissionPromptResult};
 use minicode_tool::ToolResult;
@@ -34,6 +33,7 @@ pub(crate) enum TurnEvent {
     ToolDone(ToolResult),
 }
 
+#[derive(Default)]
 pub(crate) struct ScreenState {
     pub(crate) input: String,
     pub(crate) cursor_offset: usize,
@@ -51,39 +51,8 @@ pub(crate) struct ScreenState {
     pub(crate) is_busy: bool,
     pub(crate) message_count: usize,
     pub(crate) pending_approval: Option<PendingApproval>,
-    #[allow(dead_code)]
-    pub(crate) session_id: String,
-    #[allow(dead_code)]
-    pub(crate) session_start_time: DateTime<Utc>,
     pub(crate) turn_count: usize,
     pub(crate) context_tokens_estimate: usize,
-}
-
-impl Default for ScreenState {
-    fn default() -> Self {
-        Self {
-            input: String::new(),
-            cursor_offset: 0,
-            transcript_scroll_offset: 0,
-            session_max_scroll_offset: 0,
-            expanded_tool_entries: HashSet::new(),
-            visible_tool_toggle_rows: Vec::new(),
-            selected_slash_index: 0,
-            status: None,
-            active_tool: None,
-            recent_tools: Vec::new(),
-            history: Vec::new(),
-            history_index: 0,
-            history_draft: String::new(),
-            is_busy: false,
-            message_count: 0,
-            pending_approval: None,
-            session_id: String::new(),
-            session_start_time: Utc::now(),
-            turn_count: 0,
-            context_tokens_estimate: 0,
-        }
-    }
 }
 
 pub(crate) struct ChannelCallbacks {

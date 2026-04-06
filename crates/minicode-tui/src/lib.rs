@@ -71,8 +71,6 @@ pub async fn run_tui_app() -> Result<()> {
         history,
         message_count: initial_messages.len(),
         context_tokens_estimate: estimate_context_tokens(&initial_messages),
-        session_id: runtime_store().session_id.clone(),
-        session_start_time: runtime_store().session_started_at,
         turn_count: 0,
         ..ScreenState::default()
     };

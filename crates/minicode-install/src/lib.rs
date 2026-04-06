@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Result;
-use minicode_config::{config_from_file, mini_code_settings_path, save_minicode_settings};
+use minicode_config::{build_runtime_config, mini_code_settings_path, save_minicode_settings};
 
 /// 读取一行用户输入，支持默认值回填。
 fn prompt_line(prompt: &str, default: Option<&str>) -> Result<String> {
@@ -24,7 +24,7 @@ fn prompt_line(prompt: &str, default: Option<&str>) -> Result<String> {
     } else if let Some(d) = default {
         Ok(d.to_string())
     } else {
-        Err(anyhow::anyhow!("Input cannot be empty"))
+        Err(anyhow::anyhow!("输入不能为空"))
     }
 }
 
@@ -47,36 +47,14 @@ fn copy_launcher_exe(launcher_path: impl AsRef<Path>, binary_path: impl AsRef<Pa
 
 /// 交互式安装向导：收集配置并写入启动脚本。
 pub fn run_install_wizard(cwd: impl AsRef<Path>) -> Result<()> {
-    println!("mini-code installer");
+    println!("MiniCode 安装向导");
 
     let settings_path = mini_code_settings_path();
-    println!(
-        "Configuration will be written to: {}",
-        settings_path.display()
-    );
-    println!("Settings are stored separately and won't affect other local tool configurations.");
+    println!("配置将写入：{}", settings_path.display());
+    println!("配置与其他本地工具隔离，不会互相影响。");
     println!();
 
-    let mut effective = config_from_file(cwd)?;
-
-    if effective.model.is_empty() {
-        let env_model = std::env::var("ANTHROPIC_MODEL").ok();
-        if let Some(env_model) = env_model {
-            effective.model = env_model;
-        }
-    }
-    if effective.base_url.is_empty() {
-        let env_base_url = std::env::var("ANTHROPIC_BASE_URL").ok();
-        if let Some(env_base_url) = env_base_url {
-            effective.base_url = env_base_url;
-        }
-    }
-    if let Some(auth_token_default) = &effective.auth_token
-        && auth_token_default.is_empty()
-    {
-        effective.auth_token = std::env::var("ANTHROPIC_AUTH_TOKEN").ok();
-    }
-
+    let mut effective = build_runtime_config(&cwd)?;
     let model = prompt_line("Model name", Some(effective.model.as_str()))?;
     effective.model = model;
     let base_url = prompt_line("ANTHROPIC_BASE_URL", Some(effective.base_url.as_str()))?;
@@ -98,7 +76,7 @@ pub fn run_install_wizard(cwd: impl AsRef<Path>) -> Result<()> {
     } else if let Some(saved) = &effective.auth_token {
         saved.clone()
     } else {
-        return Err(anyhow::anyhow!("ANTHROPIC_AUTH_TOKEN cannot be empty"));
+        return Err(anyhow::anyhow!("ANTHROPIC_AUTH_TOKEN 不能为空"));
     };
     effective.auth_token = Some(auth_token);
 
@@ -114,18 +92,18 @@ pub fn run_install_wizard(cwd: impl AsRef<Path>) -> Result<()> {
     copy_launcher_exe(&launcher_path, &binary_path)?;
 
     println!();
-    println!("Installation complete.");
-    println!("Configuration file: {}", settings_path.display());
-    println!("Launcher command: {}", launcher_path.display());
+    println!("安装完成。");
+    println!("配置文件：{}", settings_path.display());
+    println!("启动命令：{}", launcher_path.display());
 
     if !has_path_entry(target_bin.to_string_lossy().as_ref()) {
         println!();
-        println!("Note: {} is not in your PATH.", target_bin.display());
-        println!("You can add it to ~/.bashrc or ~/.zshrc:");
+        println!("注意：{} 不在你的 PATH 中。", target_bin.display());
+        println!("可将以下内容添加到 ~/.bashrc 或 ~/.zshrc：");
         println!("export PATH=\"{}:$PATH\"", target_bin.display());
     } else {
         println!();
-        println!("You can now run `minicode` from any terminal.");
+        println!("现在可以在任意终端运行 `minicode`。");
     }
 
     Ok(())
