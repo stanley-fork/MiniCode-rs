@@ -1,4 +1,4 @@
-use minicode_config::get_runtime_config_cached;
+use minicode_config::runtime_config;
 use minicode_history::runtime_messages;
 use minicode_permissions::session_permissions;
 use minicode_types::PermissionSummaryItem;
@@ -16,7 +16,7 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
         .into_iter()
         .filter(|task| task.status == "running")
         .count();
-    let runtime = get_runtime_config_cached().unwrap_or_default();
+    let runtime = runtime_config();
     let model = runtime.model;
     let provider = runtime
         .base_url

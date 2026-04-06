@@ -2,10 +2,10 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock, RwLock},
-    time::SystemTime,
 };
 
-use crate::{McpServerConfig, config_from_file};
+use crate::{McpServerConfig, build_runtime_config};
+use chrono::{DateTime, Utc};
 use minicode_types::ChatMessage;
 use serde::{Deserialize, Serialize};
 
@@ -30,8 +30,8 @@ pub struct RuntimeConfig {
 pub struct RuntimeStore {
     pub cwd: PathBuf,
     pub session_id: String,
-    pub session_started_at: SystemTime,
-    pub runtime_config: Arc<RwLock<Option<RuntimeConfig>>>,
+    pub session_started_at: DateTime<Utc>,
+    pub runtime_config: Arc<RwLock<RuntimeConfig>>,
     pub runtime_messages: Arc<Mutex<Vec<ChatMessage>>>,
     pub runtime_input_history: Arc<Mutex<Vec<String>>>,
 }
@@ -39,12 +39,12 @@ pub struct RuntimeStore {
 static RUNTIME_STORE: OnceLock<RuntimeStore> = OnceLock::new();
 
 pub fn init_runtime_store(cwd: impl AsRef<Path>, session_id: impl AsRef<str>) {
-    let runtime_config = config_from_file(&cwd);
+    let runtime_config = build_runtime_config(cwd.as_ref()).unwrap_or_default();
     let store = RuntimeStore {
         cwd: cwd.as_ref().to_path_buf(),
         session_id: session_id.as_ref().to_string(),
-        session_started_at: SystemTime::now(),
-        runtime_config: Arc::new(RwLock::new(runtime_config.ok())),
+        session_started_at: Utc::now(),
+        runtime_config: Arc::new(RwLock::new(runtime_config)),
         runtime_messages: Arc::new(Mutex::new(Vec::new())),
         runtime_input_history: Arc::new(Mutex::new(Vec::new())),
     };

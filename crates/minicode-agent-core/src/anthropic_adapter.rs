@@ -4,7 +4,8 @@ use std::time::SystemTime;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use minicode_config::{RuntimeConfig, load_runtime_config};
+use minicode_config::RuntimeConfig;
+use minicode_config::runtime_config;
 use minicode_tool::ToolRegistry;
 use minicode_types::{AgentStep, ChatMessage, ModelAdapter, StepDiagnostics, ToolCall};
 use rand::RngExt;
@@ -182,7 +183,7 @@ impl AnthropicModelAdapter {
 
     /// 加载当前请求所需的运行时配置。
     async fn get_runtime(&self) -> Result<RuntimeConfig> {
-        load_runtime_config()
+        Ok(runtime_config())
     }
 }
 

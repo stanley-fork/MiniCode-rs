@@ -3,48 +3,23 @@ use std::path::Path;
 
 use anyhow::Result;
 use minicode_config::{
-    project_session_conversation_path, project_session_metadata_path, project_sessions_dir,
-    project_sessions_index,
+    project_session_metadata_path, project_sessions_dir, project_sessions_index,
 };
-use minicode_types::ChatMessage;
-use serde::{Deserialize, Serialize};
 
-use crate::{SessionIndex, SessionIndexEntry, SessionMetadata, SessionRecord};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ConversationFile {
-    messages: Vec<ChatMessage>,
-}
+use crate::{SessionIndex, SessionIndexEntry, SessionMetadata};
 
 /// 把完整的会话记录保存到磁盘上，供后续恢复使用
-pub fn save_session(cwd: impl AsRef<Path>, session: &SessionRecord) -> Result<()> {
-    let messages: Vec<ChatMessage> = session
-        .messages
-        .iter()
-        .filter(|m| !matches!(m, ChatMessage::System { .. }))
-        .cloned()
-        .collect();
-    if messages.is_empty() {
-        return Ok(());
-    }
-
+pub fn save_session_metadata(cwd: impl AsRef<Path>, session: &SessionMetadata) -> Result<()> {
     let session_dir = project_sessions_dir(cwd.as_ref()).join(&session.session_id);
     fs::create_dir_all(&session_dir)?;
 
     let metadata_path = project_session_metadata_path(cwd.as_ref(), &session.session_id);
     fs::write(
         metadata_path,
-        format!("{}\n", serde_json::to_string_pretty(&session.metadata)?),
+        format!("{}\n", serde_json::to_string_pretty(&session)?),
     )?;
 
-    let conv_path = project_session_conversation_path(cwd.as_ref(), &session.session_id);
-    let conversation = ConversationFile { messages };
-    fs::write(
-        conv_path,
-        format!("{}\n", toml::to_string_pretty(&conversation)?),
-    )?;
-
-    update_session_index(cwd.as_ref(), &session.metadata)?;
+    update_session_index(cwd.as_ref(), session)?;
     Ok(())
 }
 
@@ -106,24 +81,9 @@ pub fn load_sessions(cwd: impl AsRef<Path>) -> Result<SessionIndex> {
 }
 
 /// Load a specific session for resuming
-pub fn load_session(cwd: impl AsRef<Path>, session_id: &str) -> Result<SessionRecord> {
+pub fn check_session(cwd: impl AsRef<Path>, session_id: &str) -> Result<()> {
     let metadata_path = project_session_metadata_path(cwd.as_ref(), session_id);
-    let metadata: SessionMetadata = {
-        let content = fs::read_to_string(metadata_path)?;
-        serde_json::from_str(&content)?
-    };
-
-    let conv_path = project_session_conversation_path(cwd.as_ref(), session_id);
-    let messages: Vec<ChatMessage> = if conv_path.exists() {
-        let content = fs::read_to_string(conv_path)?;
-        toml::from_str::<ConversationFile>(&content)?.messages
-    } else {
-        vec![]
-    };
-
-    Ok(SessionRecord {
-        session_id: session_id.to_string(),
-        metadata,
-        messages,
-    })
+    let content = fs::read_to_string(metadata_path)?;
+    let _metadata: SessionMetadata = serde_json::from_str(&content)?;
+    Ok(())
 }

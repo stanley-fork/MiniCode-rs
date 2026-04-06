@@ -1,11 +1,9 @@
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use anyhow::Result;
 use minicode_core::*;
 
 use crate::cli::{Command, HistoryCommand, McpCommand, SkillsCommand};
-use crate::launch_tui_app;
-
 /// 将 CLI 命令转换为管理操作
 pub async fn handle_management_command(cwd: impl AsRef<Path>, cmd: Command) -> Result<bool> {
     match cmd {
@@ -184,20 +182,6 @@ async fn handle_history_command(cwd: impl AsRef<Path>, cmd: HistoryCommand) -> R
             println!("✓ 会话已删除: {}", &target_id[..target_id.len().min(16)]);
             Ok(true)
         }
-        HistoryCommand::Resume { session_id } => {
-            match resolve_and_load_session(cwd.as_ref(), &session_id).await? {
-                Some((session_id, recovered_messages)) => {
-                    let _ = load_runtime_config().ok();
-                    let tools = Arc::new(create_default_tool_registry(cwd.as_ref()).await?);
-                    init_runtime_store(cwd.as_ref(), session_id);
-                    set_runtime_messages(recovered_messages);
-
-                    launch_tui_app(cwd.as_ref(), tools).await?;
-
-                    Ok(true)
-                }
-                None => Ok(true),
-            }
-        }
+        HistoryCommand::Resume { session_id: _ } => Ok(false),
     }
 }

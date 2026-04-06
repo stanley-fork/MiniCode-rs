@@ -1,6 +1,6 @@
 use anyhow::Result;
 use minicode_config::{
-    load_runtime_config, mini_code_mcp_path, mini_code_permissions_path, mini_code_settings_path,
+    mini_code_mcp_path, mini_code_permissions_path, mini_code_settings_path, runtime_config,
     save_minicode_settings,
 };
 use minicode_history::{clear_history_entries, clear_runtime_messages};
@@ -44,7 +44,7 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         description: "显示当前模型与配置来源。",
         handler: |_, _, _| {
             Box::pin(async move {
-                let runtime = load_runtime_config()?;
+                let runtime = runtime_config();
                 let auth = if runtime.auth_token.is_some() {
                     "ANTHROPIC_AUTH_TOKEN"
                 } else {
@@ -70,7 +70,7 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
                 if model.is_empty() {
                     return Err(anyhow::anyhow!("Model name is required."));
                 }
-                let mut runtime = load_runtime_config()?;
+                let mut runtime = runtime_config();
                 runtime.model = model.to_string();
                 save_minicode_settings(&runtime)?;
                 Ok(format!("Model updated to: {}", runtime.model))
@@ -83,7 +83,7 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
         description: "显示当前模型。",
         handler: |_, _, _| {
             Box::pin(async move {
-                let runtime = load_runtime_config()?;
+                let runtime = runtime_config();
                 Ok(format!("current model: {}", runtime.model))
             })
         },

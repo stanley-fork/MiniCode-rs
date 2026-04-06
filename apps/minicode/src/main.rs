@@ -24,13 +24,13 @@ async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     // 尽早确定会话并初始化 RuntimeStore
-    let mut recovered_messages: Option<Vec<ChatMessage>> = None;
+    let mut need_recover_history = false;
     let session_id = match &cli.command {
         Some(Command::History {
             command: HistoryCommand::Resume { session_id },
         }) => match resolve_and_load_session(&cwd, session_id).await? {
-            Some((resolved_session_id, recovered)) => {
-                recovered_messages = Some(recovered);
+            Some(resolved_session_id) => {
+                need_recover_history = true;
                 resolved_session_id
             }
             None => return Ok(()),
@@ -40,10 +40,10 @@ async fn run() -> Result<()> {
             if cli.resume
                 && let Some(resume_id) = select_session(&cwd).await?
             {
-                match load_session(&cwd, &resume_id) {
-                    Ok(session) => {
+                match check_session(&cwd, &resume_id) {
+                    Ok(()) => {
                         eprintln!("✨ 正在加载会话数据...\n");
-                        recovered_messages = Some(session.messages);
+                        need_recover_history = true;
                         resume_id
                     }
                     Err(e) => {
@@ -58,29 +58,18 @@ async fn run() -> Result<()> {
         }
     };
     init_runtime_store(&cwd, session_id);
-    if let Some(messages) = recovered_messages {
-        set_runtime_messages(messages);
+    if need_recover_history {
+        load_runtime_messages_from_file();
     }
 
-    // 处理管理命令（history resume 由上面的预处理直接进入 TUI）
-    if let Some(command) = cli.command {
-        if matches!(
-            command,
-            Command::History {
-                command: HistoryCommand::Resume { .. }
-            }
-        ) {
-            let _ = load_runtime_config().ok();
-            let tools = Arc::new(create_default_tool_registry(&cwd).await?);
-            return launch_tui_app(&cwd, tools).await;
-        }
-        if handle_management_command(&cwd, command).await? {
-            return Ok(());
-        }
+    // 处理管理命令（history resume 会继续复用常规启动流程）
+    if let Some(command) = cli.command
+        && handle_management_command(&cwd, command).await?
+    {
+        return Ok(());
     }
 
     // 初始化运行时环境
-    let _ = load_runtime_config().ok();
     let tools = Arc::new(create_default_tool_registry(&cwd).await?);
     launch_tui_app(&cwd, tools).await
 }
@@ -97,18 +86,6 @@ async fn launch_tui_app(cwd: impl AsRef<Path>, tools: Arc<ToolRegistry>) -> Resu
 
     let permissions = PermissionManager::new(cwd.as_ref())?;
 
-    if runtime_messages().is_empty() {
-        let skills = tools.get_skills();
-        let mcp_servers = tools.get_mcp_servers();
-        set_runtime_messages(vec![ChatMessage::System {
-            content: build_system_prompt(
-                cwd.as_ref(),
-                &permissions.get_summary_text(),
-                &skills,
-                &mcp_servers,
-            ),
-        }]);
-    }
     init_session_permissions(permissions.clone())?;
 
     let mcp_servers = tools.get_mcp_servers();

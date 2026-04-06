@@ -8,7 +8,7 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use minicode_config::{load_runtime_config, runtime_input_history_state, runtime_store};
+use minicode_config::{runtime_config, runtime_input_history_state, runtime_store};
 use minicode_history::{append_runtime_message, estimate_context_tokens, runtime_messages};
 use minicode_types::ChatMessage;
 use ratatui::Terminal;
@@ -326,19 +326,11 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
         }
     }
 
-    // Save complete session
-    let duration_seconds = runtime_store()
-        .session_started_at
-        .elapsed()
-        .unwrap_or_default()
-        .as_secs();
-
     let metadata = minicode_history::SessionMetadata {
         session_id: runtime_store().session_id.clone(),
-        created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        ended_at: Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
-        duration_seconds,
-        model: Some(load_runtime_config()?.model),
+        created_at: runtime_store().session_started_at.to_rfc3339(),
+        ended_at: Some(chrono::Utc::now().to_rfc3339()),
+        model: Some(runtime_config().model),
         cwd: args.cwd.to_string_lossy().to_string(),
         turn_count: state.turn_count,
         user_input_count: state.message_count,
@@ -346,12 +338,6 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
         status: "completed".to_string(),
     };
 
-    let session = minicode_history::SessionRecord {
-        session_id: runtime_store().session_id.clone(),
-        metadata,
-        messages: runtime_messages(),
-    };
-
-    let _ = minicode_history::save_session(&args.cwd, &session);
+    let _ = minicode_history::save_session_metadata(&args.cwd, &metadata);
     Ok(())
 }

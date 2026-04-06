@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
 
+use chrono::{DateTime, Utc};
 use minicode_agent_core::AgentTurnCallbacks;
 use minicode_permissions::{PermissionPromptRequest, PermissionPromptResult};
 use minicode_tool::{ToolRegistry, ToolResult};
@@ -57,7 +57,7 @@ pub(crate) struct ScreenState {
     #[allow(dead_code)]
     pub(crate) session_id: String,
     #[allow(dead_code)]
-    pub(crate) session_start_time: SystemTime,
+    pub(crate) session_start_time: DateTime<Utc>,
     pub(crate) turn_count: usize,
     pub(crate) context_tokens_estimate: usize,
 }
@@ -82,7 +82,7 @@ impl Default for ScreenState {
             message_count: 0,
             pending_approval: None,
             session_id: String::new(),
-            session_start_time: SystemTime::now(),
+            session_start_time: Utc::now(),
             turn_count: 0,
             context_tokens_estimate: 0,
         }

@@ -8,7 +8,7 @@ use minicode_agent_core::run_agent_turn;
 use minicode_cli_commands::{find_matching_slash_commands, try_handle_local_command};
 use minicode_history::{
     add_history_entry, append_runtime_message, estimate_context_tokens, load_history_entries,
-    runtime_messages, set_runtime_messages,
+    runtime_messages,
 };
 use minicode_permissions::session_permissions;
 use minicode_prompt::build_system_prompt;
@@ -140,11 +140,10 @@ pub(crate) async fn handle_submit(
     let skills = args.tools.get_skills();
     let mcp_servers = args.tools.get_mcp_servers();
 
-    let history_messages = runtime_messages();
-    let mut next_messages = history_messages.clone();
-    next_messages.push(ChatMessage::User {
+    append_runtime_message(ChatMessage::User {
         content: input.clone(),
     });
+    let next_messages = runtime_messages();
 
     let mut current_messages = Vec::with_capacity(next_messages.len() + 1);
     current_messages.push(ChatMessage::System {
@@ -158,7 +157,6 @@ pub(crate) async fn handle_submit(
     current_messages.extend(next_messages.clone());
 
     state.context_tokens_estimate = estimate_context_tokens(&current_messages);
-    set_runtime_messages(next_messages);
 
     permissions.begin_turn();
     state.status = Some("Thinking...".to_string());
@@ -174,7 +172,7 @@ pub(crate) async fn handle_submit(
 
     tokio::spawn(async move {
         let mut callbacks = ChannelCallbacks { tx: tx.clone() };
-        let updated = run_agent_turn(
+        let new_messages = run_agent_turn(
             model.as_ref(),
             &tools,
             current_messages,
@@ -186,7 +184,7 @@ pub(crate) async fn handle_submit(
             Some(&mut callbacks),
         )
         .await;
-        set_runtime_messages(updated);
+        new_messages.into_iter().for_each(append_runtime_message);
         let _ = tx.send(TurnEvent::Done);
     });
 
@@ -208,7 +206,6 @@ pub(crate) async fn handle_submit(
     }
 
     let done = runtime_messages();
-    set_runtime_messages(done.clone());
     state.context_tokens_estimate = estimate_context_tokens(&done);
     permissions.end_turn();
     state.is_busy = false;

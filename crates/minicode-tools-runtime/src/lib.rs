@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use minicode_config::get_runtime_config;
+use minicode_config::runtime_config;
 use minicode_mcp::{create_mcp_backed_tools, set_mcp_logging_enabled};
 use minicode_skills::discover_skills;
 use minicode_tool::{Tool, ToolContext, ToolRegistry};
@@ -42,14 +42,11 @@ pub async fn create_default_tool_registry(cwd: &std::path::Path) -> Result<ToolR
         Arc::new(WebFetchTool),
         Arc::new(LoadSkillTool::new(cwd.to_path_buf())),
     ];
-    let mut mcp_server_summaries = vec![];
-    let mut mcp_disposer = None;
-    if let Some(runtime) = get_runtime_config() {
-        let mcp = create_mcp_backed_tools(cwd, &runtime.mcp_servers).await;
-        tools.extend(mcp.tools);
-        mcp_server_summaries = mcp.servers;
-        mcp_disposer = mcp.disposer;
-    }
+    let runtime = runtime_config();
+    let mcp = create_mcp_backed_tools(cwd, &runtime.mcp_servers).await;
+    tools.extend(mcp.tools);
+    let mcp_server_summaries = mcp.servers;
+    let mcp_disposer = mcp.disposer;
 
     Ok(ToolRegistry::new(
         tools,

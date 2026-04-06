@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
-use minicode_config::{project_session_dir, runtime_messages_state, runtime_store};
+use minicode_config::{project_session_conversation_path, runtime_messages_state, runtime_store};
 use minicode_types::ChatMessage;
 use serde::{Deserialize, Serialize};
 
@@ -21,16 +21,12 @@ struct ConversationFile {
     messages: Vec<ChatMessage>,
 }
 
-fn session_conversation_path(cwd: impl AsRef<Path>, session_id: &str) -> std::path::PathBuf {
-    project_session_dir(cwd, session_id).join("conversation.toml")
-}
-
 fn save_session_messages(
     cwd: impl AsRef<Path>,
     session_id: &str,
     messages: &[ChatMessage],
 ) -> Result<()> {
-    let path = session_conversation_path(cwd, session_id);
+    let path = project_session_conversation_path(cwd, session_id);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -47,11 +43,18 @@ fn persist_runtime_messages(messages: &[ChatMessage]) {
     let _ = save_session_messages(&cwd, &session_id, messages);
 }
 
-pub fn set_runtime_messages(messages: Vec<ChatMessage>) {
-    let arc = runtime_messages_state();
-    let mut guard = arc.lock().unwrap_or_else(|e| e.into_inner());
-    *guard = messages.clone();
-    persist_runtime_messages(&guard);
+pub fn load_runtime_messages_from_file() {
+    let cwd = runtime_store().cwd.clone();
+    let session_id = runtime_store().session_id.clone();
+    let path = project_session_conversation_path(cwd, &session_id);
+    if path.exists()
+        && let Ok(content) = fs::read_to_string(path)
+        && let Ok(conv) = toml::from_str::<ConversationFile>(&content)
+    {
+        let arc = runtime_messages_state();
+        let mut guard = arc.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = conv.messages;
+    }
 }
 
 pub fn runtime_messages() -> Vec<ChatMessage> {

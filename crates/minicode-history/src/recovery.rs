@@ -2,15 +2,14 @@ use std::io::BufRead;
 use std::path::Path;
 
 use anyhow::Result;
-use minicode_types::ChatMessage;
 
-use crate::{SessionIndexEntry, find_sessions_by_prefix, load_session, load_sessions};
+use crate::{SessionIndexEntry, find_sessions_by_prefix, load_sessions};
 
 /// 根据前缀查询和加载会话，用于 history resume 命令
 pub async fn resolve_and_load_session(
     cwd: impl AsRef<Path>,
     prefix: &str,
-) -> Result<Option<(String, Vec<ChatMessage>)>> {
+) -> Result<Option<String>> {
     let matches = find_sessions_by_prefix(cwd.as_ref(), prefix)?;
 
     if matches.is_empty() {
@@ -58,19 +57,7 @@ pub async fn resolve_and_load_session(
         }
     };
 
-    match load_session(cwd.as_ref(), &target_id) {
-        Ok(session) => {
-            eprintln!("✨ 正在加载会话数据...\n");
-
-            let recovered_messages: Vec<ChatMessage> = session.messages;
-
-            Ok(Some((target_id, recovered_messages)))
-        }
-        Err(e) => {
-            eprintln!("⚠️  无法加载会话: {}", e);
-            Ok(None)
-        }
-    }
+    Ok(Some(target_id))
 }
 
 fn session_item_to_tuple(entry: &SessionIndexEntry) -> (String, String, usize, String) {

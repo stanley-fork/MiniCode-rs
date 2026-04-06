@@ -52,7 +52,7 @@ fn format_diagnostics(
 pub async fn run_agent_turn(
     model: &dyn ModelAdapter,
     tools: &ToolRegistry,
-    mut messages: Vec<ChatMessage>,
+    messages: Vec<ChatMessage>,
     context: ToolContext,
     max_steps: Option<usize>,
     mut callbacks: Option<&mut (dyn AgentTurnCallbacks + Send)>,
@@ -61,6 +61,8 @@ pub async fn run_agent_turn(
     let mut recover_retry = 0usize;
     let mut tool_error_count = 0usize;
     let mut saw_tool_result = false;
+
+    let mut new_messages = Vec::new();
 
     let push_continue = |messages: &mut Vec<ChatMessage>, content: &str| {
         messages.push(ChatMessage::User {
@@ -77,10 +79,10 @@ pub async fn run_agent_turn(
                 if let Some(cb) = callbacks.as_deref_mut() {
                     cb.on_assistant_message(&format!("请求失败: {err}"));
                 }
-                messages.push(ChatMessage::Assistant {
+                new_messages.push(ChatMessage::Assistant {
                     content: format!("请求失败: {err}"),
                 });
-                return messages;
+                return new_messages;
             }
         };
 
@@ -96,11 +98,11 @@ pub async fn run_agent_turn(
                     if let Some(cb) = callbacks.as_deref_mut() {
                         cb.on_progress_message(&content);
                     }
-                    messages.push(ChatMessage::AssistantProgress {
+                    new_messages.push(ChatMessage::AssistantProgress {
                         content: content.clone(),
                     });
                     push_continue(
-                        &mut messages,
+                        &mut new_messages,
                         "继续，紧接着上一条进度消息执行。请给出下一步具体工具调用、代码修改，或在任务确实完成时给出最终答案。",
                     );
                     continue;
@@ -127,9 +129,9 @@ pub async fn run_agent_turn(
                         if let Some(cb) = callbacks.as_deref_mut() {
                             cb.on_progress_message(&progress);
                         }
-                        messages.push(ChatMessage::AssistantProgress { content: progress });
+                        new_messages.push(ChatMessage::AssistantProgress { content: progress });
                         push_continue(
-                            &mut messages,
+                            &mut new_messages,
                             "继续，从你刚才中断的位置直接执行下一步，给出具体工具调用或代码修改。",
                         );
                         continue;
@@ -142,7 +144,7 @@ pub async fn run_agent_turn(
                         } else {
                             "上一条回复为空。请立即继续，给出下一步具体工具调用或代码修改。"
                         };
-                        push_continue(&mut messages, retry_prompt);
+                        push_continue(&mut new_messages, retry_prompt);
                         continue;
                     }
 
@@ -169,15 +171,15 @@ pub async fn run_agent_turn(
                     if let Some(cb) = callbacks.as_deref_mut() {
                         cb.on_assistant_message(&fallback);
                     }
-                    messages.push(ChatMessage::Assistant { content: fallback });
-                    return messages;
+                    new_messages.push(ChatMessage::Assistant { content: fallback });
+                    return new_messages;
                 }
 
                 if let Some(cb) = callbacks.as_deref_mut() {
                     cb.on_assistant_message(&content);
                 }
-                messages.push(ChatMessage::Assistant { content });
-                return messages;
+                new_messages.push(ChatMessage::Assistant { content });
+                return new_messages;
             }
             AgentStep::ToolCalls {
                 calls,
@@ -192,19 +194,19 @@ pub async fn run_agent_turn(
                         if let Some(cb) = callbacks.as_deref_mut() {
                             cb.on_progress_message(&c);
                         }
-                        messages.push(ChatMessage::AssistantProgress { content: c });
-                        push_continue(&mut messages, "继续，给出下一步工具调用或最终答案。");
+                        new_messages.push(ChatMessage::AssistantProgress { content: c });
+                        push_continue(&mut new_messages, "继续，给出下一步工具调用或最终答案。");
                     } else {
                         if let Some(cb) = callbacks.as_deref_mut() {
                             cb.on_assistant_message(&c);
                         }
-                        messages.push(ChatMessage::Assistant { content: c });
+                        new_messages.push(ChatMessage::Assistant { content: c });
                     }
                 }
 
                 if calls.is_empty() {
                     if content_only_final {
-                        return messages;
+                        return new_messages;
                     }
                     continue;
                 }
@@ -224,12 +226,12 @@ pub async fn run_agent_turn(
                         tool_error_count += 1;
                     }
 
-                    messages.push(ChatMessage::AssistantToolCall {
+                    new_messages.push(ChatMessage::AssistantToolCall {
                         tool_use_id: call.id.clone(),
                         tool_name: call.tool_name.clone(),
                         input: call.input,
                     });
-                    messages.push(ChatMessage::ToolResult {
+                    new_messages.push(ChatMessage::ToolResult {
                         tool_use_id: call.id,
                         tool_name: call.tool_name,
                         content: result.output.clone(),
@@ -242,11 +244,11 @@ pub async fn run_agent_turn(
                             if let Some(cb) = callbacks.as_deref_mut() {
                                 cb.on_assistant_message(question);
                             }
-                            messages.push(ChatMessage::Assistant {
+                            new_messages.push(ChatMessage::Assistant {
                                 content: question.to_string(),
                             });
                         }
-                        return messages;
+                        return new_messages;
                     }
                 }
             }
@@ -256,10 +258,10 @@ pub async fn run_agent_turn(
     if let Some(cb) = callbacks {
         cb.on_assistant_message("达到最大工具步数限制，已停止当前回合。");
     }
-    messages.push(ChatMessage::Assistant {
+    new_messages.push(ChatMessage::Assistant {
         content: "达到最大工具步数限制，已停止当前回合。".to_string(),
     });
-    messages
+    new_messages
 }
 
 #[allow(dead_code)]
