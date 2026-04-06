@@ -6,7 +6,9 @@ mod recovery;
 mod runtime_state;
 mod token_estimate;
 
-pub use input_history::{add_history_entry, clear_history_entries, load_history_entries};
+pub use input_history::{
+    add_history_entry, clear_history_entries, load_history_entries, load_input_history_from_file,
+};
 pub use models::{SessionIndex, SessionIndexEntry, SessionMetadata};
 pub use persistence::{check_session, load_sessions, save_session_metadata};
 pub use query::{delete_session, find_sessions_by_prefix, list_sessions_formatted};

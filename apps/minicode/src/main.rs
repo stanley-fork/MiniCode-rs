@@ -60,6 +60,7 @@ async fn run() -> Result<()> {
     init_runtime_store(&cwd, session_id);
     if need_recover_history {
         load_runtime_messages_from_file();
+        load_input_history_from_file()?;
     }
 
     // 处理管理命令（history resume 会继续复用常规启动流程）

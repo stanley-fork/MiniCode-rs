@@ -62,6 +62,7 @@ pub async fn run_agent_turn(
     let mut tool_error_count = 0usize;
     let mut saw_tool_result = false;
 
+    let base_messages = messages;
     let mut new_messages = Vec::new();
 
     let push_continue = |messages: &mut Vec<ChatMessage>, content: &str| {
@@ -73,7 +74,11 @@ pub async fn run_agent_turn(
     let limit = max_steps.unwrap_or(64);
 
     for _ in 0..limit {
-        let next = match model.next(&messages).await {
+        let mut input_messages = Vec::with_capacity(base_messages.len() + new_messages.len());
+        input_messages.extend(base_messages.iter().cloned());
+        input_messages.extend(new_messages.iter().cloned());
+
+        let next = match model.next(&input_messages).await {
             Ok(step) => step,
             Err(err) => {
                 if let Some(cb) = callbacks.as_deref_mut() {

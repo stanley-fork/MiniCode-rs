@@ -73,3 +73,16 @@ pub fn clear_history_entries() -> Result<()> {
     let session_id = runtime_store().session_id.clone();
     save_session_history_entries(cwd, &session_id, &[])
 }
+
+/// 从磁盘加载当前活动会话的历史输入并覆盖内存中的历史输入状态。
+pub fn load_input_history_from_file() -> Result<()> {
+    let cwd = runtime_store().cwd.clone();
+    let session_id = runtime_store().session_id.clone();
+    let path = session_history_path(cwd, &session_id);
+    let content = fs::read_to_string(path)?;
+    let parsed = toml::from_str::<HistoryFile>(&content)?;
+    let history = runtime_input_history_state();
+    let mut history = history.lock().unwrap_or_else(|e| e.into_inner());
+    *history = parsed.entries;
+    Ok(())
+}
