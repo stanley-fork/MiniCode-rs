@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use minicode_agent_core::AgentTurnCallbacks;
 use minicode_permissions::{PermissionPromptRequest, PermissionPromptResult};
 use minicode_tool::{ToolRegistry, ToolResult};
-use minicode_types::{ModelAdapter, TranscriptLine};
+use minicode_types::ModelAdapter;
 use tokio::sync::{mpsc, oneshot};
 
 pub(crate) struct PendingApproval {
@@ -40,7 +40,6 @@ pub(crate) enum TurnEvent {
 pub(crate) struct ScreenState {
     pub(crate) input: String,
     pub(crate) cursor_offset: usize,
-    pub(crate) transcript: Vec<TranscriptLine>,
     pub(crate) transcript_scroll_offset: usize,
     pub(crate) session_max_scroll_offset: usize,
     pub(crate) expanded_tool_entries: HashSet<usize>,
@@ -68,7 +67,6 @@ impl Default for ScreenState {
         Self {
             input: String::new(),
             cursor_offset: 0,
-            transcript: Vec::new(),
             transcript_scroll_offset: 0,
             session_max_scroll_offset: 0,
             expanded_tool_entries: HashSet::new(),

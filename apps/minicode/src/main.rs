@@ -35,7 +35,7 @@ async fn run() -> Result<()> {
     let tools = Arc::new(create_default_tool_registry(&cwd).await?);
 
     // 处理会话选择或创建
-    let (session_id, recovered_messages, initial_transcript) = if cli.resume
+    let (session_id, recovered_messages) = if cli.resume
         && let Some(resume_id) = select_session(&cwd).await?
     {
         // 尝试加载会话数据
@@ -46,39 +46,20 @@ async fn run() -> Result<()> {
                 // 从会话中提取消息（直接使用 serde_json::Value）
                 let recovered_messages: Vec<ChatMessage> = session.messages;
 
-                // 将 ChatMessage 列表转换为可视化的成绩单条目
-                let transcript_lines = render_recovered_messages(&recovered_messages);
-
-                // 转换为 TranscriptLine 格式
-                let transcript = transcript_lines
-                    .into_iter()
-                    .map(|line| TranscriptLine {
-                        kind: line.kind,
-                        body: line.body,
-                    })
-                    .collect();
-
-                (resume_id, Some(recovered_messages), transcript)
+                (resume_id, Some(recovered_messages))
             }
             Err(e) => {
                 eprintln!("⚠️  无法加载会话: {}", e);
                 eprintln!("🆕 创建新会话...\n");
-                (generate_session_id(), None, vec![])
+                (generate_session_id(), None)
             }
         }
     } else {
         // 创建新会话
-        (generate_session_id(), None, vec![])
+        (generate_session_id(), None)
     };
 
-    launch_tui_app(
-        &cwd,
-        session_id,
-        recovered_messages,
-        initial_transcript,
-        tools,
-    )
-    .await
+    launch_tui_app(&cwd, session_id, recovered_messages, tools).await
 }
 
 /// 启动 TUI 应用的通用函数
@@ -86,7 +67,6 @@ async fn launch_tui_app(
     cwd: impl AsRef<Path>,
     session_id: String,
     recovered_messages: Option<Vec<ChatMessage>>,
-    initial_transcript: Vec<TranscriptLine>,
     tools: Arc<ToolRegistry>,
 ) -> Result<()> {
     verify_interactive_terminal()?;
@@ -120,7 +100,6 @@ async fn launch_tui_app(
     };
 
     set_runtime_messages(initial_messages);
-    set_runtime_transcript(initial_transcript);
     init_session_permissions(permissions.clone())?;
     init_session_id(session_id)?;
     init_session_start_time(std::time::SystemTime::now())?;

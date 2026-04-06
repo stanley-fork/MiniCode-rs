@@ -59,7 +59,10 @@ fn save_session_history_entries(
 
 fn ensure_runtime_history_loaded() -> Vec<String> {
     if HISTORY_LOADED.load(Ordering::Relaxed) {
-        return RUNTIME_HISTORY.lock().map(|g| g.clone()).unwrap_or_default();
+        return RUNTIME_HISTORY
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
     }
     let Some(ctx) = get_active_session_context() else {
         return vec![];

@@ -7,14 +7,13 @@ use crossterm::event::{self};
 use minicode_agent_core::run_agent_turn;
 use minicode_cli_commands::{find_matching_slash_commands, try_handle_local_command};
 use minicode_history::{
-    add_history_entry, estimate_context_tokens, load_history_entries, runtime_messages,
-    runtime_transcript,
-    set_runtime_messages, set_runtime_transcript,
+    add_history_entry, append_runtime_message, estimate_context_tokens, load_history_entries,
+    runtime_messages, set_runtime_messages,
 };
 use minicode_permissions::session_permissions;
 use minicode_prompt::build_system_prompt;
 use minicode_tool::{ToolContext, parse_local_tool_shortcut};
-use minicode_types::{ChatMessage, TranscriptLine};
+use minicode_types::ChatMessage;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tokio::sync::mpsc;
@@ -60,13 +59,8 @@ pub(crate) async fn handle_submit(
         Ok(Some(local)) => {
             let messages = runtime_messages();
             state.context_tokens_estimate = estimate_context_tokens(&messages);
-            state.transcript = runtime_transcript();
-            state.transcript.push(TranscriptLine {
-                kind: "assistant".to_string(),
-                body: local,
-            });
+            append_runtime_message(ChatMessage::Assistant { content: local });
             state.transcript_scroll_offset = 0;
-            set_runtime_transcript(state.transcript.clone());
             state.history = load_history_entries();
             state.history_index = state.history.len();
             state.history_draft.clear();
@@ -75,7 +69,6 @@ pub(crate) async fn handle_submit(
         Ok(None) => {}
         Err(err) => {
             push_error_to_session(state, format!("local command failed: {err:#}"));
-            set_runtime_transcript(state.transcript.clone());
             return Ok(false);
         }
     }
@@ -116,7 +109,6 @@ pub(crate) async fn handle_submit(
                     tool_done = true;
                 }
                 let _ = apply_turn_event(state, event);
-                set_runtime_transcript(state.transcript.clone());
                 if tool_done {
                     state.is_busy = false;
                 }
@@ -132,22 +124,19 @@ pub(crate) async fn handle_submit(
 
     if input.starts_with('/') {
         let matches = find_matching_slash_commands(&input);
-        state.transcript.push(TranscriptLine {
-            kind: "assistant".to_string(),
-            body: if matches.is_empty() {
-                "未识别命令。输入 /help 查看可用命令。".to_string()
-            } else {
-                format!(
-                    "未识别命令。你是不是想输入：\n{}",
-                    matches
-                        .iter()
-                        .map(|(usage, _)| usage.clone())
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
-            },
-        });
-        set_runtime_transcript(state.transcript.clone());
+        let msg = if matches.is_empty() {
+            "未识别命令。输入 /help 查看可用命令。".to_string()
+        } else {
+            format!(
+                "未识别命令。你是不是想输入：\n{}",
+                matches
+                    .iter()
+                    .map(|(usage, _)| usage.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        };
+        append_runtime_message(ChatMessage::Assistant { content: msg });
         return Ok(false);
     }
 
@@ -172,12 +161,7 @@ pub(crate) async fn handle_submit(
     current_messages.extend(next_messages.clone());
 
     state.context_tokens_estimate = estimate_context_tokens(&current_messages);
-    state.transcript.push(TranscriptLine {
-        kind: "user".to_string(),
-        body: input,
-    });
     set_runtime_messages(next_messages);
-    set_runtime_transcript(state.transcript.clone());
 
     permissions.begin_turn();
     state.status = Some("Thinking...".to_string());
@@ -214,10 +198,8 @@ pub(crate) async fn handle_submit(
         while let Ok(event) = rx.try_recv() {
             if apply_turn_event(state, event) {
                 turn_done = true;
-                set_runtime_transcript(state.transcript.clone());
                 break;
             }
-            set_runtime_transcript(state.transcript.clone());
         }
 
         render_screen(terminal, args, state)?;
@@ -236,6 +218,5 @@ pub(crate) async fn handle_submit(
     state.status = None;
     state.active_tool = None;
     state.pending_approval = None;
-    set_runtime_transcript(state.transcript.clone());
     Ok(false)
 }

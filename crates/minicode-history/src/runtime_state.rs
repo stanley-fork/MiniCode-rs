@@ -2,7 +2,7 @@ use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, anyhow};
-use minicode_types::{ChatMessage, TranscriptLine};
+use minicode_types::ChatMessage;
 
 /// Generate a unique session ID with timestamp and UUID
 pub fn generate_session_id() -> String {
@@ -14,7 +14,6 @@ pub fn generate_session_id() -> String {
 }
 
 static MESSAGES: LazyLock<Mutex<Vec<ChatMessage>>> = LazyLock::new(|| Mutex::new(Vec::new()));
-static TRANSCRIPT: LazyLock<Mutex<Vec<TranscriptLine>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static SESSION_ID: OnceLock<String> = OnceLock::new();
 static SESSION_START_TIME: OnceLock<SystemTime> = OnceLock::new();
 
@@ -46,29 +45,14 @@ pub fn clear_runtime_messages_keep_system() {
     if let Ok(mut guard) = MESSAGES.lock() {
         guard.clear();
     }
-    clear_runtime_transcript();
 }
 
-pub fn initial_transcript() -> Vec<TranscriptLine> {
-    runtime_transcript()
-}
-
-pub fn set_runtime_transcript(transcript: Vec<TranscriptLine>) {
-    if let Ok(mut guard) = TRANSCRIPT.lock() {
-        *guard = transcript;
+pub fn append_runtime_message(message: ChatMessage) {
+    if matches!(message, ChatMessage::System { .. }) {
+        return;
     }
-}
-
-pub fn runtime_transcript() -> Vec<TranscriptLine> {
-    if let Ok(guard) = TRANSCRIPT.lock() {
-        return guard.clone();
-    }
-    Vec::new()
-}
-
-pub fn clear_runtime_transcript() {
-    if let Ok(mut guard) = TRANSCRIPT.lock() {
-        guard.clear();
+    if let Ok(mut guard) = MESSAGES.lock() {
+        guard.push(message);
     }
 }
 

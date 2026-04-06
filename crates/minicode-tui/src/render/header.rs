@@ -1,4 +1,5 @@
 use minicode_config::get_runtime_config;
+use minicode_history::runtime_messages;
 use minicode_permissions::session_permissions;
 use minicode_types::PermissionSummaryItem;
 use ratatui::text::{Line, Span};
@@ -76,7 +77,7 @@ pub(super) fn build_header_lines(args: &TuiAppArgs, state: &ScreenState) -> Vec<
             Span::raw(format!(
                 " messages={} events={} tools={} skills={} mcp={} running={}",
                 state.message_count,
-                state.transcript.len(),
+                runtime_messages().len(),
                 tools_count,
                 skills_count,
                 mcp_count,

@@ -98,13 +98,6 @@ pub trait ModelAdapter: Send + Sync {
     async fn next(&self, messages: &[ChatMessage]) -> anyhow::Result<AgentStep>;
 }
 
-/// Represents a single line in the visible transcript
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranscriptLine {
-    pub kind: String,
-    pub body: String,
-}
-
 /// Represents the current permissions summary for the session
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PermissionSummaryItem {

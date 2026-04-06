@@ -1,4 +1,5 @@
-use minicode_types::TranscriptLine;
+use minicode_history::runtime_messages;
+use minicode_types::ChatMessage;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
@@ -10,6 +11,49 @@ use super::ui_utils::sanitize_line;
 
 const TOOL_PREVIEW_LINES: usize = 6;
 const TOOL_PREVIEW_CHARS: usize = 180;
+
+#[derive(Debug, Clone)]
+struct TranscriptLine {
+    kind: String,
+    body: String,
+}
+
+fn transcript_from_messages() -> Vec<TranscriptLine> {
+    runtime_messages()
+        .into_iter()
+        .filter_map(|msg| match msg {
+            ChatMessage::System { .. } => None,
+            ChatMessage::User { content } => Some(TranscriptLine {
+                kind: "user".to_string(),
+                body: content,
+            }),
+            ChatMessage::Assistant { content } => Some(TranscriptLine {
+                kind: "assistant".to_string(),
+                body: content,
+            }),
+            ChatMessage::AssistantProgress { content } => Some(TranscriptLine {
+                kind: "progress".to_string(),
+                body: content,
+            }),
+            ChatMessage::AssistantToolCall {
+                tool_name, input, ..
+            } => Some(TranscriptLine {
+                kind: "tool".to_string(),
+                body: format!("{}\n{}", tool_name, input),
+            }),
+            ChatMessage::ToolResult {
+                content, is_error, ..
+            } => Some(TranscriptLine {
+                kind: if is_error {
+                    "tool:error".to_string()
+                } else {
+                    "tool".to_string()
+                },
+                body: content,
+            }),
+        })
+        .collect()
+}
 
 /// 按字符数截断字符串并在末尾追加省略符。
 fn truncate_chars(value: &str, max_chars: usize) -> String {
@@ -88,7 +132,8 @@ pub(super) fn transcript_lines(state: &ScreenState, width: usize) -> SessionRend
     let theme = theme();
     let mut lines = Vec::new();
     let mut toggle_targets = Vec::new();
-    for (idx, entry) in state.transcript.iter().enumerate() {
+    let transcript = transcript_from_messages();
+    for (idx, entry) in transcript.iter().enumerate() {
         if idx > 0 {
             lines.push(Line::from(""));
         }

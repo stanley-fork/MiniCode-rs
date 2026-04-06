@@ -10,10 +10,10 @@ use crossterm::terminal::{
 };
 use minicode_config::get_runtime_config;
 use minicode_history::{
-    estimate_context_tokens, initial_messages, initial_transcript, load_history_entries,
-    runtime_messages, session_id, session_start_time, set_runtime_transcript,
+    append_runtime_message, estimate_context_tokens, initial_messages, load_history_entries,
+    runtime_messages, session_id, session_start_time,
 };
-use minicode_types::TranscriptLine;
+use minicode_types::ChatMessage;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -69,8 +69,6 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
 
     // 使用预先准备好的数据（在 run() 函数中已经加载并处理过）
     let initial_messages = initial_messages();
-    let initial_transcript = initial_transcript();
-
     let mut state = ScreenState {
         history: load_history_entries(),
         message_count: initial_messages.len(),
@@ -78,7 +76,6 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
         session_id: session_id().clone(),
         session_start_time: session_start_time(),
         turn_count: 0,
-        transcript: initial_transcript,
         ..ScreenState::default()
     };
     state.history_index = state.history.len();
@@ -152,16 +149,14 @@ pub async fn run_tui_app(mut args: TuiAppArgs) -> Result<()> {
                             {
                                 Ok(exit) => should_exit = exit,
                                 Err(err) => {
-                                    state.transcript.push(TranscriptLine {
-                                        kind: "tool:error".to_string(),
-                                        body: format!("submit failed: {err:#}"),
+                                    append_runtime_message(ChatMessage::Assistant {
+                                        content: format!("submit failed: {err:#}"),
                                     });
                                     state.status = Some("Error".to_string());
                                     state.is_busy = false;
                                     state.active_tool = None;
                                     state.pending_approval = None;
                                     state.transcript_scroll_offset = 0;
-                                    set_runtime_transcript(state.transcript.clone());
                                 }
                             }
                             state.message_count = runtime_messages().len();

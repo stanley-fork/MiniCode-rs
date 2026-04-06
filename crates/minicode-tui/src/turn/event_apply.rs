@@ -1,12 +1,12 @@
-use minicode_types::TranscriptLine;
+use minicode_history::append_runtime_message;
+use minicode_types::ChatMessage;
 
 use crate::state::{PendingApproval, ScreenState, TurnEvent};
 
 /// 向会话转录中写入一条错误消息并更新状态。
 pub(crate) fn push_error_to_session(state: &mut ScreenState, message: impl Into<String>) {
-    state.transcript.push(TranscriptLine {
-        kind: "tool:error".to_string(),
-        body: message.into(),
+    append_runtime_message(ChatMessage::Assistant {
+        content: message.into(),
     });
     state.transcript_scroll_offset = 0;
     state.status = Some("Error".to_string());
@@ -29,15 +29,7 @@ pub(crate) fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> boo
         TurnEvent::ToolStart { tool_name, input } => {
             state.active_tool = Some(tool_name.clone());
             state.status = Some(format!("Running {tool_name}..."));
-            state.transcript.push(TranscriptLine {
-                kind: "tool".to_string(),
-                body: format!(
-                    "{}\n{}",
-                    tool_name,
-                    summarize_tool_input(&tool_name, &input)
-                ),
-            });
-            state.transcript_scroll_offset = 0;
+            let _ = summarize_tool_input(&tool_name, &input);
             false
         }
         TurnEvent::ToolResult {
@@ -46,31 +38,15 @@ pub(crate) fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> boo
             is_error,
         } => {
             state.recent_tools.push((tool_name, !is_error));
-            state.transcript.push(TranscriptLine {
-                kind: if is_error {
-                    "tool:error".to_string()
-                } else {
-                    "tool".to_string()
-                },
-                body: output,
-            });
-            state.transcript_scroll_offset = 0;
+            let _ = output;
             false
         }
         TurnEvent::Assistant(content) => {
-            state.transcript.push(TranscriptLine {
-                kind: "assistant".to_string(),
-                body: content,
-            });
-            state.transcript_scroll_offset = 0;
+            let _ = content;
             false
         }
         TurnEvent::Progress(content) => {
-            state.transcript.push(TranscriptLine {
-                kind: "progress".to_string(),
-                body: content,
-            });
-            state.transcript_scroll_offset = 0;
+            let _ = content;
             false
         }
         TurnEvent::Approval { request, responder } => {
@@ -92,13 +68,8 @@ pub(crate) fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> boo
                     .unwrap_or_else(|| "tool".to_string()),
                 result.ok,
             ));
-            state.transcript.push(TranscriptLine {
-                kind: if result.ok {
-                    "tool".to_string()
-                } else {
-                    "tool:error".to_string()
-                },
-                body: result.output,
+            append_runtime_message(ChatMessage::Assistant {
+                content: result.output,
             });
             state.active_tool = None;
             state.status = None;

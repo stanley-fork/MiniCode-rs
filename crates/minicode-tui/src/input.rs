@@ -1,4 +1,5 @@
 use minicode_cli_commands::find_matching_slash_commands;
+use minicode_history::runtime_messages;
 use unicode_width::UnicodeWidthStr;
 
 use crate::state::ScreenState;
@@ -102,7 +103,7 @@ pub(crate) fn scroll_transcript_by(state: &mut ScreenState, delta: isize) -> boo
 
 /// 切换某条工具输出的展开/折叠状态。
 pub(crate) fn toggle_tool_details(state: &mut ScreenState, index: usize) -> bool {
-    if index >= state.transcript.len() {
+    if index >= runtime_messages().len() {
         return false;
     }
     if !state.expanded_tool_entries.insert(index) {

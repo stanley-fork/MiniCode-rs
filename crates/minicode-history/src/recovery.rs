@@ -2,62 +2,15 @@ use std::io::BufRead;
 use std::path::Path;
 
 use anyhow::Result;
-use minicode_types::{ChatMessage, TranscriptLine};
+use minicode_types::ChatMessage;
 
 use crate::{SessionIndexEntry, find_sessions_by_prefix, load_session, load_sessions};
-
-/// Convert ChatMessage list to visible transcript lines for session recovery
-pub fn render_recovered_messages(messages: &[ChatMessage]) -> Vec<TranscriptLine> {
-    let mut transcript = Vec::new();
-
-    for msg in messages {
-        match msg {
-            ChatMessage::System { .. } => {}
-            ChatMessage::User { content } => {
-                transcript.push(TranscriptLine {
-                    kind: "user".to_string(),
-                    body: content.clone(),
-                });
-            }
-            ChatMessage::Assistant { content } => {
-                transcript.push(TranscriptLine {
-                    kind: "assistant".to_string(),
-                    body: content.clone(),
-                });
-            }
-            ChatMessage::AssistantProgress { content } => {
-                transcript.push(TranscriptLine {
-                    kind: "progress".to_string(),
-                    body: content.clone(),
-                });
-            }
-            ChatMessage::AssistantToolCall {
-                tool_name, input, ..
-            } => {
-                transcript.push(TranscriptLine {
-                    kind: "tool".to_string(),
-                    body: format!("{}\n{}", tool_name, input),
-                });
-            }
-            ChatMessage::ToolResult {
-                content, is_error, ..
-            } => {
-                transcript.push(TranscriptLine {
-                    kind: if *is_error { "tool:error" } else { "tool" }.to_string(),
-                    body: content.clone(),
-                });
-            }
-        }
-    }
-
-    transcript
-}
 
 /// 根据前缀查询和加载会话，用于 history resume 命令
 pub async fn resolve_and_load_session(
     cwd: impl AsRef<Path>,
     prefix: &str,
-) -> Result<Option<(String, Vec<ChatMessage>, Vec<TranscriptLine>)>> {
+) -> Result<Option<(String, Vec<ChatMessage>)>> {
     let matches = find_sessions_by_prefix(cwd.as_ref(), prefix)?;
 
     if matches.is_empty() {
@@ -111,16 +64,7 @@ pub async fn resolve_and_load_session(
 
             let recovered_messages: Vec<ChatMessage> = session.messages;
 
-            let transcript_lines = render_recovered_messages(&recovered_messages);
-            let transcript = transcript_lines
-                .into_iter()
-                .map(|line| TranscriptLine {
-                    kind: line.kind,
-                    body: line.body,
-                })
-                .collect();
-
-            Ok(Some((target_id, recovered_messages, transcript)))
+            Ok(Some((target_id, recovered_messages)))
         }
         Err(e) => {
             eprintln!("⚠️  无法加载会话: {}", e);
