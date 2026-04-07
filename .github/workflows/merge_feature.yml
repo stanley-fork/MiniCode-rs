@@ -18,7 +18,7 @@ jobs:
       - name: 拉取并合并文档
         run: |
           # 格式: owner/repo
-          REPOS=("LiuMengxuan04/MiniCode/" "QUSETIONS/MiniCode-Python" "harkerhand/MiniCode-rs")
+          REPOS=("LiuMengxuan04/MiniCode" "QUSETIONS/MiniCode-Python" "harkerhand/MiniCode-rs")
           OUTPUT_FILE="MULTI_IMPL.md"
 
           echo "# MiniCode 的多语言实现" > "$OUTPUT_FILE"
