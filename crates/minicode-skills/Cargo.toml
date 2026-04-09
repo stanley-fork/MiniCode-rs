@@ -11,6 +11,8 @@ anyhow = { workspace = true }
 dirs = { workspace = true }
 minicode-types = { workspace = true }
 minicode-config = { workspace = true }
+gray_matter = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 
 [lints]
 workspace = true

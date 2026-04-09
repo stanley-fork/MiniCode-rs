@@ -3,8 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
+use gray_matter::engine::YAML;
 use minicode_config::runtime_store;
 use minicode_types::SkillSummary;
+use serde::Deserialize;
 
 #[derive(Debug, Clone)]
 pub struct LoadedSkill {
@@ -13,22 +15,25 @@ pub struct LoadedSkill {
 }
 
 /// 从 SKILL.md 中提取首段可读描述。
-fn extract_description(markdown: &str) -> String {
-    let normalized = markdown.replace("\r\n", "\n");
-    for block in normalized.split("\n\n") {
-        let b = block.trim();
-        if b.is_empty() || b.starts_with('#') {
-            continue;
-        }
-        if let Some(line) = b
-            .lines()
-            .map(str::trim)
-            .find(|x| !x.is_empty() && !x.starts_with('#'))
-        {
-            return line.replace('`', "");
-        }
+fn extract_info(markdown: &str) -> (String, String) {
+    #[derive(Deserialize)]
+    struct SkillMeta {
+        name: String,
+        description: String,
     }
-    "No description provided.".to_string()
+
+    let matter = gray_matter::Matter::<YAML>::new();
+    let parsed = matter.parse::<SkillMeta>(markdown);
+    parsed
+        .ok()
+        .and_then(|p| p.data)
+        .map(|data| (data.name, data.description))
+        .unwrap_or_else(|| {
+            (
+                "Unnamed skill".to_string(),
+                "No description provided.".to_string(),
+            )
+        })
 }
 
 /// 返回技能搜索根目录及其来源标签。
@@ -63,19 +68,20 @@ pub fn discover_skills() -> Vec<SkillSummary> {
             if !ft.is_dir() {
                 continue;
             }
-            let name = entry.file_name().to_string_lossy().to_string();
-            if by_name.contains_key(&name) {
+            let raw_name = entry.file_name().to_string_lossy().to_string();
+            if by_name.contains_key(&raw_name) {
                 continue;
             }
             let skill_path = entry.path().join("SKILL.md");
             let Ok(content) = fs::read_to_string(&skill_path) else {
                 continue;
             };
+            let (name, description) = extract_info(&content);
             by_name.insert(
-                name.clone(),
+                raw_name,
                 SkillSummary {
                     name,
-                    description: extract_description(&content),
+                    description,
                     path: skill_path.to_string_lossy().to_string(),
                     source: source.clone(),
                 },
@@ -97,9 +103,10 @@ pub fn load_skill(cwd: impl AsRef<Path>, name: &str) -> Option<LoadedSkill> {
         let Ok(content) = fs::read_to_string(&p) else {
             continue;
         };
+        let (name, description) = extract_info(&content);
         let summary = SkillSummary {
-            name: normalized.to_string(),
-            description: extract_description(&content),
+            name,
+            description,
             path: p.to_string_lossy().to_string(),
             source,
         };

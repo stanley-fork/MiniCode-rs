@@ -61,6 +61,10 @@ pub fn runtime_messages() -> Vec<ChatMessage> {
     get_messages().lock().map(|g| g.clone()).unwrap_or_default()
 }
 
+pub fn runtime_messages_count() -> usize {
+    get_messages().lock().map(|g| g.len()).unwrap_or_default()
+}
+
 pub fn clear_runtime_messages() {
     let arc = get_messages();
     let mut guard = arc.lock().unwrap_or_else(|e| e.into_inner());

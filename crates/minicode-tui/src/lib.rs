@@ -11,6 +11,7 @@ use crossterm::terminal::{
 use minicode_config::{runtime_config, runtime_store};
 use minicode_history::{
     append_runtime_message, estimate_context_tokens, get_input_history, runtime_messages,
+    runtime_messages_count,
 };
 use minicode_types::ChatMessage;
 use ratatui::Terminal;
@@ -153,7 +154,8 @@ pub async fn run_tui_app() -> Result<()> {
                                     state.transcript_scroll_offset = 0;
                                 }
                             }
-                            state.message_count = runtime_messages().len();
+                            state.message_count = runtime_messages_count();
+                            state.turn_count += 1;
                         }
                         KeyEvent {
                             code: KeyCode::Backspace,
