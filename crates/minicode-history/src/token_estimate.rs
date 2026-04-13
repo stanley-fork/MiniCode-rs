@@ -11,6 +11,7 @@ fn estimate_text_tokens(text: &str) -> usize {
 pub fn estimate_context_tokens(messages: &[ChatMessage]) -> usize {
     messages
         .iter()
+        .filter(|msg| msg.should_include_in_context())
         .map(|msg| {
             let content_tokens = match msg {
                 ChatMessage::System { content }
@@ -37,6 +38,7 @@ pub fn estimate_context_tokens(messages: &[ChatMessage]) -> usize {
                         + estimate_text_tokens(tool_name)
                         + estimate_text_tokens(content)
                 }
+                ChatMessage::Runtime { content, .. } => estimate_text_tokens(content),
             };
             MESSAGE_OVERHEAD_TOKENS + content_tokens
         })

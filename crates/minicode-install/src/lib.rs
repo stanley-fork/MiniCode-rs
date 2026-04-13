@@ -89,6 +89,11 @@ pub fn run_install_wizard(cwd: impl AsRef<Path>) -> Result<()> {
 
     let launcher_path = target_bin.join("minicode");
     let binary_path = std::env::current_exe()?;
+    println!(
+        "正在从 {} 安装启动器到：{}",
+        binary_path.display(),
+        launcher_path.display()
+    );
     copy_launcher_exe(&launcher_path, &binary_path)?;
 
     println!();

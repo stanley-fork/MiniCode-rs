@@ -53,6 +53,7 @@ pub(crate) struct ScreenState {
     pub(crate) pending_approval: Option<PendingApproval>,
     pub(crate) turn_count: usize,
     pub(crate) context_tokens_estimate: usize,
+    pub(crate) queued_busy_inputs: Vec<String>,
 }
 
 pub(crate) struct ChannelCallbacks {

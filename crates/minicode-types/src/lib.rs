@@ -58,6 +58,82 @@ pub enum ChatMessage {
         #[serde(rename = "isError")]
         is_error: bool,
     },
+    #[serde(rename = "runtime")]
+    Runtime {
+        kind: String,
+        content: String,
+        flags: MessageFlags,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MessageFlags(u8);
+
+impl MessageFlags {
+    pub const RECORD: u8 = 1 << 0;
+    pub const CONTEXT: u8 = 1 << 1;
+    pub const DISPLAY: u8 = 1 << 2;
+
+    pub const fn new(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    pub const fn recorded() -> Self {
+        Self(Self::RECORD)
+    }
+
+    pub const fn context() -> Self {
+        Self(Self::CONTEXT)
+    }
+
+    pub const fn display() -> Self {
+        Self(Self::DISPLAY)
+    }
+
+    pub const fn recorded_context_display() -> Self {
+        Self(Self::RECORD | Self::CONTEXT | Self::DISPLAY)
+    }
+
+    pub const fn contains(self, bit: u8) -> bool {
+        self.0 & bit != 0
+    }
+}
+
+impl ChatMessage {
+    pub fn runtime_display(kind: impl Into<String>, content: impl Into<String>) -> Self {
+        Self::Runtime {
+            kind: kind.into(),
+            content: content.into(),
+            flags: MessageFlags::display(),
+        }
+    }
+
+    pub fn flags(&self) -> MessageFlags {
+        match self {
+            ChatMessage::System { .. } => MessageFlags::new(MessageFlags::CONTEXT),
+            ChatMessage::Minicode { .. } => {
+                MessageFlags::new(MessageFlags::RECORD | MessageFlags::CONTEXT)
+            }
+            ChatMessage::User { .. }
+            | ChatMessage::Assistant { .. }
+            | ChatMessage::AssistantProgress { .. }
+            | ChatMessage::AssistantToolCall { .. }
+            | ChatMessage::ToolResult { .. } => MessageFlags::recorded_context_display(),
+            ChatMessage::Runtime { flags, .. } => *flags,
+        }
+    }
+
+    pub fn should_record(&self) -> bool {
+        self.flags().contains(MessageFlags::RECORD)
+    }
+
+    pub fn should_include_in_context(&self) -> bool {
+        self.flags().contains(MessageFlags::CONTEXT)
+    }
+
+    pub fn should_display(&self) -> bool {
+        self.flags().contains(MessageFlags::DISPLAY)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

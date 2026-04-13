@@ -189,7 +189,7 @@ pub const SLASH_COMMANDS: &[SlashCommand] = &[
             Box::pin(async move {
                 clear_runtime_messages();
                 clear_history_entries()?;
-                Ok("上下文已清空（保留 system prompt）。".to_string())
+                Ok("上下文已清空".to_string())
             })
         },
     },

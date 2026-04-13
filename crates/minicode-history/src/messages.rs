@@ -61,6 +61,13 @@ pub fn runtime_messages() -> Vec<ChatMessage> {
     get_messages().lock().map(|g| g.clone()).unwrap_or_default()
 }
 
+pub fn runtime_messages_for_context() -> Vec<ChatMessage> {
+    runtime_messages()
+        .into_iter()
+        .filter(ChatMessage::should_include_in_context)
+        .collect()
+}
+
 pub fn runtime_messages_count() -> usize {
     get_messages().lock().map(|g| g.len()).unwrap_or_default()
 }
@@ -79,7 +86,12 @@ pub fn append_runtime_message(message: ChatMessage) {
     let arc = get_messages();
     let mut guard = arc.lock().unwrap_or_else(|e| e.into_inner());
     guard.push(message);
-    persist_runtime_messages(&guard);
+    let persisted = guard
+        .iter()
+        .filter(|msg| msg.should_record())
+        .cloned()
+        .collect::<Vec<_>>();
+    persist_runtime_messages(&persisted);
 }
 
 static MESSAGES: OnceLock<Arc<Mutex<Vec<ChatMessage>>>> = OnceLock::new();

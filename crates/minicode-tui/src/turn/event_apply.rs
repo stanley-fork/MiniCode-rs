@@ -3,15 +3,6 @@ use minicode_types::ChatMessage;
 
 use crate::state::{PendingApproval, ScreenState, TurnEvent};
 
-/// 向会话转录中写入一条错误消息并更新状态。
-pub(crate) fn push_error_to_session(state: &mut ScreenState, message: impl Into<String>) {
-    append_runtime_message(ChatMessage::Assistant {
-        content: message.into(),
-    });
-    state.transcript_scroll_offset = 0;
-    state.status = Some("Error".to_string());
-}
-
 /// 为工具输入生成便于展示的简短摘要。
 fn summarize_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
     if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
@@ -68,9 +59,12 @@ pub(crate) fn apply_turn_event(state: &mut ScreenState, event: TurnEvent) -> boo
                     .unwrap_or_else(|| "tool".to_string()),
                 result.ok,
             ));
-            append_runtime_message(ChatMessage::Assistant {
-                content: result.output,
-            });
+            let kind = if result.ok {
+                "command:result"
+            } else {
+                "command:error"
+            };
+            append_runtime_message(ChatMessage::runtime_display(kind, result.output));
             state.active_tool = None;
             state.status = None;
             false

@@ -1,4 +1,4 @@
-use minicode_history::{append_runtime_message, runtime_messages};
+use minicode_history::{append_runtime_message, runtime_messages_for_context};
 use minicode_prompt::build_system_prompt;
 use minicode_tool::get_tool_registry;
 use minicode_types::{AgentStep, ChatMessage, ModelAdapter};
@@ -259,7 +259,7 @@ pub async fn run_agent_turn(
 }
 
 fn get_messages_with_system() -> Vec<ChatMessage> {
-    let messages_without_system = runtime_messages();
+    let messages_without_system = runtime_messages_for_context();
     let mut messages = Vec::with_capacity(messages_without_system.len() + 1);
     messages.push(ChatMessage::System {
         content: build_system_prompt(),

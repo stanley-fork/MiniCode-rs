@@ -174,6 +174,13 @@ impl AnthropicModelAdapter {
                         json!({"type":"tool_result","tool_use_id":tool_use_id,"content":content,"is_error":is_error}),
                     );
                 }
+                ChatMessage::Runtime { content, .. } => {
+                    push(
+                        &mut converted,
+                        "user",
+                        json!({"type":"text","text":content}),
+                    );
+                }
             }
         }
 

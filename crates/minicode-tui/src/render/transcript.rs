@@ -51,6 +51,20 @@ fn transcript_from_messages() -> Vec<TranscriptLine> {
                 },
                 body: content,
             }),
+            ChatMessage::Runtime {
+                kind,
+                content,
+                flags,
+            } => {
+                if flags.contains(minicode_types::MessageFlags::DISPLAY) {
+                    Some(TranscriptLine {
+                        kind: format!("runtime:{kind}"),
+                        body: content,
+                    })
+                } else {
+                    None
+                }
+            }
         })
         .collect()
 }
@@ -86,6 +100,9 @@ fn transcript_title_line(kind: &str) -> Line<'static> {
         "progress" => ("progress", theme.progress_style()),
         "tool:error" => ("tool err", theme.tool_error_style()),
         "tool" => ("tool", theme.tool_style()),
+        "runtime:command" => ("cmd", theme.user_style()),
+        "runtime:command:result" => ("cmd out", theme.assistant_style()),
+        "runtime:command:error" => ("cmd err", theme.tool_error_style()),
         _ => (kind, Style::default().fg(Color::Gray)),
     };
     Line::from(vec![
